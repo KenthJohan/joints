@@ -1,0 +1,51 @@
+// Relationship entities used as joint/constraint types.
+// Symmetric means adding (pivot, B) to A also adds (pivot, A) to B.
+pivot {
+    Symmetric
+    Axis: {x: 0.0, y: 1.0}
+    Compliance: {value: 0.0001}
+    Impulse: {value: 0.0}
+}
+
+drive {
+    Symmetric
+    Target: {value: 1.0}
+    Impulse: {value: 0.0}
+}
+
+stop {
+    Symmetric
+    Range: {min: -0.5, max: 0.5}
+    Impulse: {value: 0.0}
+}
+
+// Dynamic lever body — defined first so ground_pin can reference its children.
+lever {
+    Pose: {x: 1.0, y: 0.0, angle: 0.0}
+    Velocity: {x: 0, y: 0, angular: 0}
+    Mass: {value: 2.5}
+    Inertia: {value: 0.8}
+
+    lever_root {
+        LocalOffset: {x: -1.0, y: 0.0}
+    }
+
+    lever_tip {
+        LocalOffset: {x: 1.0, y: 0.0}
+    }
+}
+
+// Static ground body (mass=0 means immovable).
+ground {
+    Pose: {x: 0, y: 0, angle: 0}
+    Velocity: {x: 0, y: 0, angular: 0}
+    Mass: {value: 0}
+    Inertia: {value: 0}
+
+    ground_pin {
+        LocalOffset: {x: 0.0, y: 0.0}
+        (pivot, lever.lever_root)
+        (drive, lever.lever_tip)
+        (stop, lever.lever_tip)
+    }
+}

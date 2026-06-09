@@ -203,48 +203,34 @@ int main(int argc, char *argv[]) {
     ECS_COMPONENT_DEFINE(ecs, Compliance);
     ECS_COMPONENT_DEFINE(ecs, Impulse);
 
-    ecs_entity_t ground = ecs_entity(ecs, {.name = "ground"});
-    ecs_set(ecs, ground, Pose, {0, 0, 0});
-    ecs_set(ecs, ground, Velocity, {0, 0, 0});
-    ecs_set(ecs, ground, Mass, {0});
-    ecs_set(ecs, ground, Inertia, {0});
+    ecs_struct(ecs, { .entity = ecs_id(Pose),
+        .members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}, {"angle", ecs_id(ecs_f64_t)}} });
+    ecs_struct(ecs, { .entity = ecs_id(Velocity),
+        .members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}, {"angular", ecs_id(ecs_f64_t)}} });
+    ecs_struct(ecs, { .entity = ecs_id(Mass),        .members = {{"value", ecs_id(ecs_f64_t)}} });
+    ecs_struct(ecs, { .entity = ecs_id(Inertia),     .members = {{"value", ecs_id(ecs_f64_t)}} });
+    ecs_struct(ecs, { .entity = ecs_id(LocalOffset),
+        .members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}} });
+    ecs_struct(ecs, { .entity = ecs_id(Axis),
+        .members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}} });
+    ecs_struct(ecs, { .entity = ecs_id(Range),
+        .members = {{"min", ecs_id(ecs_f64_t)}, {"max", ecs_id(ecs_f64_t)}} });
+    ecs_struct(ecs, { .entity = ecs_id(Target),     .members = {{"value", ecs_id(ecs_f64_t)}} });
+    ecs_struct(ecs, { .entity = ecs_id(Compliance), .members = {{"value", ecs_id(ecs_f64_t)}} });
+    ecs_struct(ecs, { .entity = ecs_id(Impulse),    .members = {{"value", ecs_id(ecs_f64_t)}} });
 
-    ecs_entity_t lever = ecs_entity(ecs, {.name = "lever"});
-    ecs_set(ecs, lever, Pose, {1.0, 0.0, 0.0});
-    ecs_set(ecs, lever, Velocity, {0, 0, 0});
-    ecs_set(ecs, lever, Mass, {2.5});
-    ecs_set(ecs, lever, Inertia, {0.8});
+    if (ecs_script_run_file(ecs, "assets/entities.flecs")) {
+        return 1;
+    }
 
-    ecs_entity_t ground_pin = ecs_entity(ecs, {.name = "ground_pin"});
-    ecs_add_pair(ecs, ground_pin, EcsChildOf, ground);
-    ecs_set(ecs, ground_pin, LocalOffset, {0.0, 0.0});
-
-    ecs_entity_t lever_root = ecs_entity(ecs, {.name = "lever_root"});
-    ecs_add_pair(ecs, lever_root, EcsChildOf, lever);
-    ecs_set(ecs, lever_root, LocalOffset, {-1.0, 0.0});
-
-    ecs_entity_t lever_tip = ecs_entity(ecs, {.name = "lever_tip"});
-    ecs_add_pair(ecs, lever_tip, EcsChildOf, lever);
-    ecs_set(ecs, lever_tip, LocalOffset, {1.0, 0.0});
-
-    ecs_entity_t pivot = ecs_entity(ecs, {.name = "pivot"});
-    ecs_add_id(ecs, pivot, EcsSymmetric);
-    ecs_add_pair(ecs, ground_pin, pivot, lever_root);
-    ecs_set(ecs, pivot, Axis, {0.0, 1.0});
-    ecs_set(ecs, pivot, Compliance, {0.0001});
-    ecs_set(ecs, pivot, Impulse, {0.0});
-
-    ecs_entity_t drive = ecs_entity(ecs, {.name = "drive"});
-    ecs_add_id(ecs, drive, EcsSymmetric);
-    ecs_add_pair(ecs, ground_pin, drive, lever_tip);
-    ecs_set(ecs, drive, Target, {1.0});
-    ecs_set(ecs, drive, Impulse, {0.0});
-
-    ecs_entity_t stop = ecs_entity(ecs, {.name = "stop"});
-    ecs_add_id(ecs, stop, EcsSymmetric);
-    ecs_add_pair(ecs, ground_pin, stop, lever_tip);
-    ecs_set(ecs, stop, Range, {-0.5, 0.5});
-    ecs_set(ecs, stop, Impulse, {0.0});
+    ecs_entity_t ground     = ecs_lookup(ecs, "ground");
+    ecs_entity_t lever      = ecs_lookup(ecs, "lever");
+    ecs_entity_t ground_pin = ecs_lookup(ecs, "ground.ground_pin");
+    ecs_entity_t lever_root = ecs_lookup(ecs, "lever.lever_root");
+    ecs_entity_t lever_tip  = ecs_lookup(ecs, "lever.lever_tip");
+    ecs_entity_t pivot      = ecs_lookup(ecs, "pivot");
+    ecs_entity_t drive      = ecs_lookup(ecs, "drive");
+    ecs_entity_t stop       = ecs_lookup(ecs, "stop");
 
     printf("Flecs graph sketch\n");
     printf("- Bodies are persistent nodes\n");
