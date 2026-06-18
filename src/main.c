@@ -19,7 +19,7 @@ ECS_COMPONENT_DECLARE(Impulse);
  * pose values to compute Jacobians and positional error terms each step.
  */
 typedef struct {
-    double x, y, angle;
+	double x, y, angle;
 } Pose;
 
 /**
@@ -29,7 +29,7 @@ typedef struct {
  * component and later integrated back into Pose.
  */
 typedef struct {
-    double x, y, angular;
+	double x, y, angular;
 } Velocity;
 
 /**
@@ -39,7 +39,7 @@ typedef struct {
  * mass to compute effective mass and impulse response.
  */
 typedef struct {
-    double value;
+	double value;
 } Mass;
 
 /**
@@ -49,7 +49,7 @@ typedef struct {
  * uses inverse inertia for angular Jacobian terms.
  */
 typedef struct {
-    double value;
+	double value;
 } Inertia;
 
 /**
@@ -59,7 +59,7 @@ typedef struct {
  * row assembly can resolve world anchors by combining owner Pose and this data.
  */
 typedef struct {
-    double x, y;
+	double x, y;
 } LocalOffset;
 
 /**
@@ -69,7 +69,7 @@ typedef struct {
  * Row assembly normalizes/uses this vector to form directional Jacobians.
  */
 typedef struct {
-    double x, y;
+	double x, y;
 } Axis;
 
 /**
@@ -79,8 +79,8 @@ typedef struct {
  * measured value reaches @c min or @c max.
  */
 typedef struct {
-    double min;
-    double max;
+	double min;
+	double max;
 } Range;
 
 /**
@@ -90,7 +90,7 @@ typedef struct {
  * that drive the connected bodies toward the commanded value.
  */
 typedef struct {
-    double value;
+	double value;
 } Target;
 
 /**
@@ -101,7 +101,7 @@ typedef struct {
  * solver path.
  */
 typedef struct {
-    double value;
+	double value;
 } Compliance;
 
 /**
@@ -111,138 +111,187 @@ typedef struct {
  * guess is applied first, then updated by iterative row solves.
  */
 typedef struct {
-    double value;
+	double value;
 } Impulse;
 
-static const char* name_of(ecs_world_t *world, ecs_entity_t entity) {
-    const char *name = ecs_get_name(world, entity);
-    return name ? name : "<unnamed>";
+static const char *name_of(ecs_world_t *world, ecs_entity_t entity)
+{
+	const char *name = ecs_get_name(world, entity);
+	return name ? name : "<unnamed>";
 }
 
-static void print_pivot_ref(ecs_world_t *world, ecs_entity_t pivot) {
-    const LocalOffset *offset = ecs_get(world, pivot, LocalOffset);
+static void print_pivot_ref(ecs_world_t *world, ecs_entity_t pivot)
+{
+	const LocalOffset *offset = ecs_get(world, pivot, LocalOffset);
 
-    printf("%s[%.2f, %.2f]",
-        name_of(world, pivot),
-        offset ? offset->x : 0.0,
-        offset ? offset->y : 0.0);
+	printf("%s[%.2f, %.2f]",
+	name_of(world, pivot),
+	offset ? offset->x : 0.0,
+	offset ? offset->y : 0.0);
 }
 
-static void print_body(ecs_world_t *world, ecs_entity_t entity) {
-    const Pose *pose = ecs_get(world, entity, Pose);
-    const Velocity *velocity = ecs_get(world, entity, Velocity);
-    const Mass *mass = ecs_get(world, entity, Mass);
-    const Inertia *inertia = ecs_get(world, entity, Inertia);
+static void print_body(ecs_world_t *world, ecs_entity_t entity)
+{
+	const Pose *pose = ecs_get(world, entity, Pose);
+	const Velocity *velocity = ecs_get(world, entity, Velocity);
+	const Mass *mass = ecs_get(world, entity, Mass);
+	const Inertia *inertia = ecs_get(world, entity, Inertia);
 
-    printf("Body %-12s pose=(%.2f, %.2f, %.2f) vel=(%.2f, %.2f, %.2f) mass=%.2f inertia=%.2f\n",
-        name_of(world, entity),
-        pose ? pose->x : 0.0,
-        pose ? pose->y : 0.0,
-        pose ? pose->angle : 0.0,
-        velocity ? velocity->x : 0.0,
-        velocity ? velocity->y : 0.0,
-        velocity ? velocity->angular : 0.0,
-        mass ? mass->value : 0.0,
-        inertia ? inertia->value : 0.0);
+	printf("Body %-12s pose=(%.2f, %.2f, %.2f) vel=(%.2f, %.2f, %.2f) mass=%.2f inertia=%.2f\n",
+	name_of(world, entity),
+	pose ? pose->x : 0.0,
+	pose ? pose->y : 0.0,
+	pose ? pose->angle : 0.0,
+	velocity ? velocity->x : 0.0,
+	velocity ? velocity->y : 0.0,
+	velocity ? velocity->angular : 0.0,
+	mass ? mass->value : 0.0,
+	inertia ? inertia->value : 0.0);
 }
 
-static void print_joint(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t pivot_a, ecs_entity_t pivot_b) {
-    const Axis *axis = ecs_get(world, entity, Axis);
-    const Compliance *compliance = ecs_get(world, entity, Compliance);
-    const Impulse *impulse = ecs_get(world, entity, Impulse);
+static void print_joint(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t pivot_a, ecs_entity_t pivot_b)
+{
+	const Axis *axis = ecs_get(world, entity, Axis);
+	const Compliance *compliance = ecs_get(world, entity, Compliance);
+	const Impulse *impulse = ecs_get(world, entity, Impulse);
 
-    printf("Joint %-11s ", name_of(world, entity));
-    print_pivot_ref(world, pivot_a);
-    printf(" <-> ");
-    print_pivot_ref(world, pivot_b);
-    printf(" axis=(%.2f, %.2f) compliance=%.4f impulse=%.2f\n",
-        axis ? axis->x : 0.0,
-        axis ? axis->y : 0.0,
-        compliance ? compliance->value : 0.0,
-        impulse ? impulse->value : 0.0);
+	printf("Joint %-11s ", name_of(world, entity));
+	print_pivot_ref(world, pivot_a);
+	printf(" <-> ");
+	print_pivot_ref(world, pivot_b);
+	printf(" axis=(%.2f, %.2f) compliance=%.4f impulse=%.2f\n",
+	axis ? axis->x : 0.0,
+	axis ? axis->y : 0.0,
+	compliance ? compliance->value : 0.0,
+	impulse ? impulse->value : 0.0);
 }
 
-static void print_motor(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t pivot_a, ecs_entity_t pivot_b) {
-    const Target *target = ecs_get(world, entity, Target);
-    const Impulse *impulse = ecs_get(world, entity, Impulse);
+static void print_motor(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t pivot_a, ecs_entity_t pivot_b)
+{
+	const Target *target = ecs_get(world, entity, Target);
+	const Impulse *impulse = ecs_get(world, entity, Impulse);
 
-    printf("Motor %-11s ", name_of(world, entity));
-    print_pivot_ref(world, pivot_a);
-    printf(" -> ");
-    print_pivot_ref(world, pivot_b);
-    printf(" target=%.2f impulse=%.2f\n",
-        target ? target->value : 0.0,
-        impulse ? impulse->value : 0.0);
+	printf("Motor %-11s ", name_of(world, entity));
+	print_pivot_ref(world, pivot_a);
+	printf(" -> ");
+	print_pivot_ref(world, pivot_b);
+	printf(" target=%.2f impulse=%.2f\n",
+	target ? target->value : 0.0,
+	impulse ? impulse->value : 0.0);
 }
 
-static void print_limit(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t pivot_a, ecs_entity_t pivot_b) {
-    const Range *range = ecs_get(world, entity, Range);
-    const Impulse *impulse = ecs_get(world, entity, Impulse);
+static void print_limit(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t pivot_a, ecs_entity_t pivot_b)
+{
+	const Range *range = ecs_get(world, entity, Range);
+	const Impulse *impulse = ecs_get(world, entity, Impulse);
 
-    printf("Limit %-11s ", name_of(world, entity));
-    print_pivot_ref(world, pivot_a);
-    printf(" <-> ");
-    print_pivot_ref(world, pivot_b);
-    printf(" range=[%.2f, %.2f] impulse=%.2f\n",
-        range ? range->min : 0.0,
-        range ? range->max : 0.0,
-        impulse ? impulse->value : 0.0);
+	printf("Limit %-11s ", name_of(world, entity));
+	print_pivot_ref(world, pivot_a);
+	printf(" <-> ");
+	print_pivot_ref(world, pivot_b);
+	printf(" range=[%.2f, %.2f] impulse=%.2f\n",
+	range ? range->min : 0.0,
+	range ? range->max : 0.0,
+	impulse ? impulse->value : 0.0);
 }
 
-int main(int argc, char *argv[]) {
-    ecs_world_t *ecs = ecs_init_w_args(argc, argv);
+int main(int argc, char *argv[])
+{
+	ecs_world_t *ecs = ecs_init_w_args(argc, argv);
 
-    ECS_COMPONENT_DEFINE(ecs, Pose);
-    ECS_COMPONENT_DEFINE(ecs, Velocity);
-    ECS_COMPONENT_DEFINE(ecs, Mass);
-    ECS_COMPONENT_DEFINE(ecs, Inertia);
-    ECS_COMPONENT_DEFINE(ecs, LocalOffset);
-    ECS_COMPONENT_DEFINE(ecs, Axis);
-    ECS_COMPONENT_DEFINE(ecs, Range);
-    ECS_COMPONENT_DEFINE(ecs, Target);
-    ECS_COMPONENT_DEFINE(ecs, Compliance);
-    ECS_COMPONENT_DEFINE(ecs, Impulse);
+	ECS_COMPONENT_DEFINE(ecs, Pose);
+	ECS_COMPONENT_DEFINE(ecs, Velocity);
+	ECS_COMPONENT_DEFINE(ecs, Mass);
+	ECS_COMPONENT_DEFINE(ecs, Inertia);
+	ECS_COMPONENT_DEFINE(ecs, LocalOffset);
+	ECS_COMPONENT_DEFINE(ecs, Axis);
+	ECS_COMPONENT_DEFINE(ecs, Range);
+	ECS_COMPONENT_DEFINE(ecs, Target);
+	ECS_COMPONENT_DEFINE(ecs, Compliance);
+	ECS_COMPONENT_DEFINE(ecs, Impulse);
 
-    ecs_struct(ecs, { .entity = ecs_id(Pose),
-        .members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}, {"angle", ecs_id(ecs_f64_t)}} });
-    ecs_struct(ecs, { .entity = ecs_id(Velocity),
-        .members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}, {"angular", ecs_id(ecs_f64_t)}} });
-    ecs_struct(ecs, { .entity = ecs_id(Mass),        .members = {{"value", ecs_id(ecs_f64_t)}} });
-    ecs_struct(ecs, { .entity = ecs_id(Inertia),     .members = {{"value", ecs_id(ecs_f64_t)}} });
-    ecs_struct(ecs, { .entity = ecs_id(LocalOffset),
-        .members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}} });
-    ecs_struct(ecs, { .entity = ecs_id(Axis),
-        .members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}} });
-    ecs_struct(ecs, { .entity = ecs_id(Range),
-        .members = {{"min", ecs_id(ecs_f64_t)}, {"max", ecs_id(ecs_f64_t)}} });
-    ecs_struct(ecs, { .entity = ecs_id(Target),     .members = {{"value", ecs_id(ecs_f64_t)}} });
-    ecs_struct(ecs, { .entity = ecs_id(Compliance), .members = {{"value", ecs_id(ecs_f64_t)}} });
-    ecs_struct(ecs, { .entity = ecs_id(Impulse),    .members = {{"value", ecs_id(ecs_f64_t)}} });
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Pose),
+	.members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}, {"angle", ecs_id(ecs_f64_t)}},
+	});
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Velocity),
+	.members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}, {"angular", ecs_id(ecs_f64_t)}},
+	});
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Mass),
+	.members = {{"value", ecs_id(ecs_f64_t)}},
+	});
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Inertia),
+	.members = {{"value", ecs_id(ecs_f64_t)}},
+	});
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(LocalOffset),
+	.members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}},
+	});
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Axis),
+	.members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}},
+	});
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Range),
+	.members = {{"min", ecs_id(ecs_f64_t)}, {"max", ecs_id(ecs_f64_t)}},
+	});
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Target),
+	.members = {{"value", ecs_id(ecs_f64_t)}},
+	});
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Compliance),
+	.members = {{"value", ecs_id(ecs_f64_t)}},
+	});
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Impulse),
+	.members = {{"value", ecs_id(ecs_f64_t)}},
+	});
 
-    if (ecs_script_run_file(ecs, "assets/entities.flecs")) {
-        return 1;
-    }
+	if (ecs_script_run_file(ecs, "assets/entities.flecs")) {
+		return 1;
+	}
 
-    ecs_entity_t ground     = ecs_lookup(ecs, "ground");
-    ecs_entity_t lever      = ecs_lookup(ecs, "lever");
-    ecs_entity_t ground_pin = ecs_lookup(ecs, "ground.ground_pin");
-    ecs_entity_t lever_root = ecs_lookup(ecs, "lever.lever_root");
-    ecs_entity_t lever_tip  = ecs_lookup(ecs, "lever.lever_tip");
-    ecs_entity_t pivot      = ecs_lookup(ecs, "pivot");
-    ecs_entity_t drive      = ecs_lookup(ecs, "drive");
-    ecs_entity_t stop       = ecs_lookup(ecs, "stop");
+	ecs_entity_t ground = ecs_lookup(ecs, "ground");
+	ecs_entity_t lever = ecs_lookup(ecs, "lever");
+	ecs_entity_t ground_pin = ecs_lookup(ecs, "ground.ground_pin");
+	ecs_entity_t lever_root = ecs_lookup(ecs, "lever.lever_root");
+	ecs_entity_t lever_tip = ecs_lookup(ecs, "lever.lever_tip");
+	ecs_entity_t pivot = ecs_lookup(ecs, "pivot");
+	ecs_entity_t drive = ecs_lookup(ecs, "drive");
+	ecs_entity_t stop = ecs_lookup(ecs, "stop");
 
-    printf("Flecs graph sketch\n");
-    printf("- Bodies are persistent nodes\n");
-    printf("- Pivot points are entities owned by bodies with local offsets\n");
-    printf("- Joints, constraints, motors, and limits connect pivot entities\n");
-    printf("- The solver would later compile these entities into transient constraint rows\n\n");
+	printf("Flecs graph sketch\n");
+	printf("- Bodies are persistent nodes\n");
+	printf("- Pivot points are entities owned by bodies with local offsets\n");
+	printf("- Joints, constraints, motors, and limits connect pivot entities\n");
+	printf("- The solver would later compile these entities into transient constraint rows\n\n");
 
-    print_body(ecs, ground);
-    print_body(ecs, lever);
-    print_joint(ecs, pivot, ground_pin, lever_root);
-    print_motor(ecs, drive, ground_pin, lever_tip);
-    print_limit(ecs, stop, ground_pin, lever_tip);
+	print_body(ecs, ground);
+	print_body(ecs, lever);
+	print_joint(ecs, pivot, ground_pin, lever_root);
+	print_motor(ecs, drive, ground_pin, lever_tip);
+	print_limit(ecs, stop, ground_pin, lever_tip);
 
-    return ecs_fini(ecs);
+	ecs_set(ecs, EcsWorld, EcsRest, {.port = 0});
+	printf("Remote: %s\n", "https://www.flecs.dev/explorer/?remote=true");
+
+	while (1) {
+		ecs_progress(ecs, 1.0f);
+	}
+
+	return ecs_fini(ecs);
 }
