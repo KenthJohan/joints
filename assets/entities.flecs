@@ -1,56 +1,69 @@
 // Relationship entities used as joint/constraint types.
-// Symmetric means adding (pivot, B) to A also adds (pivot, A) to B.
-pivot {
-    Symmetric
-    Axis: {x: 0.0, y: 1.0}
-    Compliance: {value: 0.0001}
-    Impulse: {value: 0.0}
+// Symmetric means adding (Mate, B) to A also adds (Mate, A) to B.
+
+// Mate: revolute-joint relationship type. C struct carries a dummy field.
+Mate
+
+
+
+ground {
+    ground_left {
+        LocalOffset: {x: -2.0, y: 0.0}
+    }
+    ground_right {
+        LocalOffset: {x: 2.0, y: 0.0}
+    }
 }
 
-drive {
-    Symmetric
-    Target: {value: 1.0}
-    Impulse: {value: 0.0}
-}
-
-stop {
-    Symmetric
-    Range: {min: -0.5, max: 0.5}
-    Impulse: {value: 0.0}
-}
-
-// Dynamic lever body — defined first so ground_pin can reference its children.
-lever {
-    Pose: {x: 1.0, y: 0.0, angle: 0.0}
-    Velocity: {x: 0, y: 0, angular: 0}
-    Mass: {value: 2.5}
-    Inertia: {value: 0.8}
-
-    lever_root {
+crank {
+    crank_root {
         LocalOffset: {x: -1.0, y: 0.0}
     }
-
-    lever_tip {
+    crank_tip {
         LocalOffset: {x: 1.0, y: 0.0}
     }
 }
 
-// Static ground body (mass=0 means immovable).
-ground {
-    Pose: {x: 0, y: 0, angle: 0}
-    Velocity: {x: 0, y: 0, angular: 0}
-    Mass: {value: 0}
-    Inertia: {value: 0}
-
-    ground_pin {
-        LocalOffset: {x: 0.0, y: 0.0}
-        (pivot, lever.lever_root)
-        (drive, lever.lever_tip)
-        (stop, lever.lever_tip)
+coupler {
+    coupler_left {
+        LocalOffset: {x: -1.0, y: 0.0}
+    }
+    coupler_right {
+        LocalOffset: {x: 1.0, y: 0.0}
     }
 }
 
+rocker {
+    rocker_root {
+        LocalOffset: {x: -1.0, y: 0.0}
+    }
+    rocker_tip {
+        LocalOffset: {x: 1.0, y: 0.0}
+    }
+}
 
-mate1 {
-    
+joints {
+    ground_crank_joint {
+        (Mate, ground_left)
+        (Mate, crank_root)
+        Revolute: {x: 0.0, y: 1.0}
+    }
+
+    crank_coupler_joint {
+        (Mate, crank_tip)
+        (Mate, coupler_left)
+        Revolute: {x: 0.0, y: 1.0}
+    }
+
+    coupler_rocker_joint {
+        (Mate, coupler_right)
+        (Mate, rocker_root)
+        Revolute: {x: 0.0, y: 1.0}
+    }
+
+    rocker_ground_joint {
+        (Mate, rocker_tip)
+        (Mate, ground_right)
+        Revolute: {x: 0.0, y: 1.0}
+    }
 }

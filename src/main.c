@@ -6,7 +6,8 @@ ECS_COMPONENT_DECLARE(Velocity);
 ECS_COMPONENT_DECLARE(Mass);
 ECS_COMPONENT_DECLARE(Inertia);
 ECS_COMPONENT_DECLARE(LocalOffset);
-ECS_COMPONENT_DECLARE(Axis);
+ECS_COMPONENT_DECLARE(Mate);
+ECS_COMPONENT_DECLARE(Revolute);
 ECS_COMPONENT_DECLARE(Range);
 ECS_COMPONENT_DECLARE(Target);
 ECS_COMPONENT_DECLARE(Compliance);
@@ -63,14 +64,24 @@ typedef struct {
 } LocalOffset;
 
 /**
- * @brief Preferred or constrained axis for directional constraints.
+ * @brief Relationship tag for revolute (pin) mates between pivot entities.
+ *
+ * The dummy field gives the type a concrete size so it can be registered
+ * as a component. No meaningful data is stored here.
+ */
+typedef struct {
+	int dummy;
+} Mate;
+
+/**
+ * @brief Preferred or constrained axis for revolute constraints.
  *
  * Examples include hinge axis conventions, slider directions, or motor axes.
  * Row assembly normalizes/uses this vector to form directional Jacobians.
  */
 typedef struct {
 	double x, y;
-} Axis;
+} Revolute;
 
 /**
  * @brief Min/max bounds for limit constraints.
@@ -151,7 +162,7 @@ static void print_body(ecs_world_t *world, ecs_entity_t entity)
 
 static void print_joint(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t pivot_a, ecs_entity_t pivot_b)
 {
-	const Axis *axis = ecs_get(world, entity, Axis);
+	const Revolute *revolute = ecs_get(world, entity, Revolute);
 	const Compliance *compliance = ecs_get(world, entity, Compliance);
 	const Impulse *impulse = ecs_get(world, entity, Impulse);
 
@@ -159,9 +170,9 @@ static void print_joint(ecs_world_t *world, ecs_entity_t entity, ecs_entity_t pi
 	print_pivot_ref(world, pivot_a);
 	printf(" <-> ");
 	print_pivot_ref(world, pivot_b);
-	printf(" axis=(%.2f, %.2f) compliance=%.4f impulse=%.2f\n",
-	axis ? axis->x : 0.0,
-	axis ? axis->y : 0.0,
+	printf(" revolute=(%.2f, %.2f) compliance=%.4f impulse=%.2f\n",
+	revolute ? revolute->x : 0.0,
+	revolute ? revolute->y : 0.0,
 	compliance ? compliance->value : 0.0,
 	impulse ? impulse->value : 0.0);
 }
@@ -204,7 +215,7 @@ int main(int argc, char *argv[])
 	ECS_COMPONENT_DEFINE(ecs, Mass);
 	ECS_COMPONENT_DEFINE(ecs, Inertia);
 	ECS_COMPONENT_DEFINE(ecs, LocalOffset);
-	ECS_COMPONENT_DEFINE(ecs, Axis);
+	ECS_COMPONENT_DEFINE(ecs, Mate);
 	ECS_COMPONENT_DEFINE(ecs, Range);
 	ECS_COMPONENT_DEFINE(ecs, Target);
 	ECS_COMPONENT_DEFINE(ecs, Compliance);
@@ -237,7 +248,13 @@ int main(int argc, char *argv[])
 	});
 	ecs_struct_init(ecs,
 	&(ecs_struct_desc_t){
-	.entity = ecs_id(Axis),
+	.entity = ecs_id(Mate),
+	.members = {{"dummy", ecs_id(ecs_i32_t)}},
+	});
+	ECS_COMPONENT_DEFINE(ecs, Revolute);
+	ecs_struct_init(ecs,
+	&(ecs_struct_desc_t){
+	.entity = ecs_id(Revolute),
 	.members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}},
 	});
 	ecs_struct_init(ecs,
@@ -270,7 +287,7 @@ int main(int argc, char *argv[])
 	ecs_entity_t ground_pin = ecs_lookup(ecs, "ground.ground_pin");
 	ecs_entity_t lever_root = ecs_lookup(ecs, "lever.lever_root");
 	ecs_entity_t lever_tip = ecs_lookup(ecs, "lever.lever_tip");
-	ecs_entity_t pivot = ecs_lookup(ecs, "pivot");
+	ecs_entity_t mate = ecs_lookup(ecs, "Mate");
 	ecs_entity_t drive = ecs_lookup(ecs, "drive");
 	ecs_entity_t stop = ecs_lookup(ecs, "stop");
 
@@ -282,7 +299,7 @@ int main(int argc, char *argv[])
 
 	print_body(ecs, ground);
 	print_body(ecs, lever);
-	print_joint(ecs, pivot, ground_pin, lever_root);
+	print_joint(ecs, mate, ground_pin, lever_root);
 	print_motor(ecs, drive, ground_pin, lever_tip);
 	print_limit(ecs, stop, ground_pin, lever_tip);
 
