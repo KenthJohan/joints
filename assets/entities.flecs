@@ -1,69 +1,169 @@
-// Relationship entities used as joint/constraint types.
-// Symmetric means adding (Mate, B) to A also adds (Mate, A) to B.
-
-// Mate: revolute-joint relationship type. C struct carries a dummy field.
-Mate
-
-
-
-ground {
-    ground_left {
-        LocalOffset: {x: -2.0, y: 0.0}
+prefab four_bar {
+    ground {
+        left {
+            LocalOffset: {x: -2.0, y: 0.0}
+        }
+        right {
+            LocalOffset: {x: 2.0, y: 0.0}
+        }
     }
-    ground_right {
-        LocalOffset: {x: 2.0, y: 0.0}
+
+    crank {
+        root {
+            LocalOffset: {x: -1.0, y: 0.0}
+        }
+        tip {
+            LocalOffset: {x: 1.0, y: 0.0}
+        }
+    }
+
+    coupler {
+        left {
+            LocalOffset: {x: -1.0, y: 0.0}
+        }
+        right {
+            LocalOffset: {x: 1.0, y: 0.0}
+        }
+    }
+
+    rocker {
+        root {
+            LocalOffset: {x: -1.0, y: 0.0}
+        }
+        tip {
+            LocalOffset: {x: 1.0, y: 0.0}
+        }
+    }
+
+    joints {
+        ground_crank_joint {
+            (Mate, ground.left)
+            (Mate, crank.root)
+            Revolute: {x: 0.0, y: 1.0}
+        }
+
+        crank_coupler_joint {
+            (Mate, crank.tip)
+            (Mate, coupler.left)
+            Revolute: {x: 0.0, y: 1.0}
+        }
+
+        coupler_rocker_joint {
+            (Mate, coupler.right)
+            (Mate, rocker.root)
+            Revolute: {x: 0.0, y: 1.0}
+        }
+
+        rocker_ground_joint {
+            (Mate, rocker.tip)
+            (Mate, ground.right)
+            Revolute: {x: 0.0, y: 1.0}
+        }
     }
 }
 
-crank {
-    crank_root {
-        LocalOffset: {x: -1.0, y: 0.0}
-    }
-    crank_tip {
-        LocalOffset: {x: 1.0, y: 0.0}
-    }
-}
+simulations {
+    four_bar_a : four_bar {
+        ground {
+            Pose: {x: 0.0, y: 0.0, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.0}
+            Mass: {value: 0.0}
+            Inertia: {value: 0.0}
+        }
 
-coupler {
-    coupler_left {
-        LocalOffset: {x: -1.0, y: 0.0}
-    }
-    coupler_right {
-        LocalOffset: {x: 1.0, y: 0.0}
-    }
-}
+        crank {
+            Pose: {x: -1.0, y: 0.0, angle: 0.1}
+            Velocity: {x: 0.0, y: 0.0, angular: 1.0}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
 
-rocker {
-    rocker_root {
-        LocalOffset: {x: -1.0, y: 0.0}
-    }
-    rocker_tip {
-        LocalOffset: {x: 1.0, y: 0.0}
-    }
-}
+        coupler {
+            Pose: {x: 1.0, y: 0.0, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.0}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
 
-joints {
-    ground_crank_joint {
-        (Mate, ground_left)
-        (Mate, crank_root)
-        Revolute: {x: 0.0, y: 1.0}
+        rocker {
+            Pose: {x: 3.0, y: 0.0, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.0}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
+
+        joints {
+            ground_crank_joint {
+                Compliance: {value: 0.0}
+                Impulse: {value: 0.0}
+            }
+
+            crank_coupler_joint {
+                Compliance: {value: 0.0}
+                Impulse: {value: 0.0}
+            }
+
+            coupler_rocker_joint {
+                Compliance: {value: 0.0}
+                Impulse: {value: 0.0}
+            }
+
+            rocker_ground_joint {
+                Compliance: {value: 0.0}
+                Impulse: {value: 0.0}
+            }
+        }
     }
 
-    crank_coupler_joint {
-        (Mate, crank_tip)
-        (Mate, coupler_left)
-        Revolute: {x: 0.0, y: 1.0}
-    }
+    four_bar_b : four_bar {
+        ground {
+            Pose: {x: 0.0, y: 0.0, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.0}
+            Mass: {value: 0.0}
+            Inertia: {value: 0.0}
+        }
 
-    coupler_rocker_joint {
-        (Mate, coupler_right)
-        (Mate, rocker_root)
-        Revolute: {x: 0.0, y: 1.0}
-    }
+        crank {
+            Pose: {x: -1.0, y: 0.0, angle: -0.2}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.5}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
 
-    rocker_ground_joint {
-        (Mate, rocker_tip)
-        (Mate, ground_right)
-        Revolute: {x: 0.0, y: 1.0}
+        coupler {
+            Pose: {x: 1.2, y: 0.1, angle: 0.05}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.0}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
+
+        rocker {
+            Pose: {x: 2.9, y: -0.1, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.0}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
+
+        joints {
+            ground_crank_joint {
+                Compliance: {value: 0.001}
+                Impulse: {value: 0.0}
+            }
+
+            crank_coupler_joint {
+                Compliance: {value: 0.001}
+                Impulse: {value: 0.0}
+            }
+
+            coupler_rocker_joint {
+                Compliance: {value: 0.001}
+                Impulse: {value: 0.0}
+            }
+
+            rocker_ground_joint {
+                Compliance: {value: 0.001}
+                Impulse: {value: 0.0}
+            }
+        }
     }
 }
