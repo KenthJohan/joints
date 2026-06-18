@@ -197,17 +197,20 @@ int main(int argc, char *argv[])
 	.members = {{"value", ecs_id(ecs_f64_t)}},
 	});
 
+
 	if (ecs_script_run_file(ecs, "assets/entities.flecs")) {
 		return 1;
 	}
 
+	// Used for remote inspection with Flecs Explorer. See https://www.flecs.dev/explorer/?remote=true
+#if 0
 	ecs_set(ecs, EcsWorld, EcsRest, {.port = 0});
 	printf("Remote: %s\n", "https://www.flecs.dev/explorer/?remote=true");
-
 
 	while (1) {
 		ecs_progress(ecs, 1.0f);
 	}
+#endif
 
 	return ecs_fini(ecs);
 }
