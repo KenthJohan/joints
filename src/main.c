@@ -473,9 +473,9 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	g_solver_config_entity = ecs_lookup(ecs, "SolverConfigEntity");
+	g_solver_config_entity = ecs_lookup(ecs, "simulations.four_bar_a");
 	if (g_solver_config_entity == 0) {
-		printf("missing SolverConfigEntity in assets/entities.flecs\n");
+		printf("missing simulations.four_bar_a in assets/entities.flecs\n");
 		return 1;
 	}
 

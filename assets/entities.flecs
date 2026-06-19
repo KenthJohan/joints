@@ -62,16 +62,14 @@ prefab four_bar {
     }
 }
 
-SolverConfigEntity {
-    SolverConfig: {
-        dt: 0.016666666666666666,
-        baumgarte: 0.25,
-        iterations: 12
-    }
-}
-
 simulations {
     four_bar_a : four_bar {
+        SolverConfig: {
+            dt: 0.016666666666666666,
+            baumgarte: 0.25,
+            iterations: 12
+        }
+
         ground {
             Pose: {x: 0.0, y: 0.0, angle: 0.0}
             Velocity: {x: 0.0, y: 0.0, angular: 0.0}
