@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <assert.h>
 #include <flecs.h>
-#include "example_gsolver/sim_types.h"
+#include "sim_types.h"
 
 #define MAX_CONSTRAINT_ROWS 4096
 #define MAX_SOLVER_ITERS 64
@@ -297,12 +297,13 @@ static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *
 void AssembleRevoluteRows(ecs_iter_t *it)
 {
 	assert(it->field_count >= 3);
-	const Impulse *impulse_field = ecs_field(it, Impulse, 0);
-	assert(impulse_field != NULL);
-	const Revolute *revolute_field = ecs_field(it, Revolute, 1);
-	assert(revolute_field != NULL);
-	const SolverConfig *solver_cfg_field = ecs_field(it, SolverConfig, 2);
-	assert(solver_cfg_field != NULL);
+	const Impulse *impulse = ecs_field(it, Impulse, 0); // self
+	const Revolute *revolute = ecs_field(it, Revolute, 1); // self
+	const SolverConfig *solver_cfg = ecs_field(it, SolverConfig, 2); // shared
+
+	assert(impulse != NULL);
+	assert(revolute != NULL);
+	assert(solver_cfg != NULL);
 
 	if (g_assembly_frame_marker != g_frame_counter) {
 		g_assembly_frame_marker = g_frame_counter;
@@ -327,17 +328,16 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 			continue;
 		}
 
-		const Revolute *joint_revolute = &revolute_field[i];
+		const Revolute *joint_revolute = &revolute[i];
 
-		const SolverConfig *cfg = &solver_cfg_field[0];
-		const double dt = (cfg->dt > 0.0) ? cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
-		const double beta = cfg->baumgarte;
-		const int configured_iters = (cfg->iterations > 0) ? cfg->iterations : 10;
+		const double dt = (solver_cfg->dt > 0.0) ? solver_cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
+		const double beta = solver_cfg->baumgarte;
+		const int configured_iters = (solver_cfg->iterations > 0) ? solver_cfg->iterations : 10;
 		const int row_solver_iters = configured_iters > MAX_SOLVER_ITERS ? MAX_SOLVER_ITERS : configured_iters;
 		const Compliance *joint_compliance = ecs_get(it->world, joint, Compliance);
 		const double compliance_value = (joint_compliance != NULL) ? joint_compliance->value : 0.0;
 		const double alpha = (compliance_value > 0.0) ? (compliance_value / (dt * dt)) : 0.0;
-		const Impulse *joint_impulse = &impulse_field[i];
+		const Impulse *joint_impulse = &impulse[i];
 		const int row_count_for_joint = (pivot_count - 1) * 2;
 		const double warm_lambda = (row_count_for_joint > 0)
 			? (0.5 * joint_impulse->value / sqrt((double)row_count_for_joint))
@@ -424,12 +424,12 @@ void SolveConstraintRows(ecs_iter_t *it)
 void UpdateJointImpulsesFromRows(ecs_iter_t *it)
 {
 	assert(it->field_count >= 2);
-	const SolverConfig *solver_cfg_field = ecs_field(it, SolverConfig, 1);
-	assert(solver_cfg_field != NULL);
+	const SolverConfig *solver_cfg = ecs_field(it, SolverConfig, 1); // shared
+
+	assert(solver_cfg != NULL);
 
 	for (int i = 0; i < it->count; i ++) {
 		const ecs_entity_t joint = it->entities[i];
-		const SolverConfig *cfg = &solver_cfg_field[0];
 
 		double lambda_sq = 0.0;
 		double residual_sq = 0.0;
@@ -454,29 +454,27 @@ void UpdateJointImpulsesFromRows(ecs_iter_t *it)
 		printf("  joint=%s residual_norm=%.3e cfg_iters=%d\n",
 			joint_name != NULL ? joint_name : "<unnamed>",
 			sqrt(residual_sq),
-			cfg->iterations);
+			solver_cfg->iterations);
 	}
 }
 
 void IntegrateBodies(ecs_iter_t *it)
 {
-	assert(it->field_count >= 2);
-	const SolverConfig *solver_cfg_field = ecs_field(it, SolverConfig, 1);
-	assert(solver_cfg_field != NULL);
+	assert(it->field_count >= 3);
+	const Velocity *velocity = ecs_field(it, Velocity, 0); // self
+	Pose *pose = ecs_field(it, Pose, 1); // self
+	const SolverConfig *solver_cfg = ecs_field(it, SolverConfig, 2); // shared
+
+	assert(velocity != NULL);
+	assert(pose != NULL);
+	assert(solver_cfg != NULL);
 
 	for (int i = 0; i < it->count; i ++) {
-		const SolverConfig *cfg = &solver_cfg_field[0];
-		const double dt = (cfg->dt > 0.0) ? cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
+		const double dt = (solver_cfg->dt > 0.0) ? solver_cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
 
-		const Velocity *velocity = ecs_get(it->world, it->entities[i], Velocity);
-		Pose *pose = ecs_get_mut(it->world, it->entities[i], Pose);
-		if (velocity == NULL || pose == NULL) {
-			continue;
-		}
-
-		pose->x += velocity->x * dt;
-		pose->y += velocity->y * dt;
-		pose->angle += velocity->angular * dt;
+		pose[i].x += velocity[i].x * dt;
+		pose[i].y += velocity[i].y * dt;
+		pose[i].angle += velocity[i].angular * dt;
 		ecs_modified(it->world, it->entities[i], Pose);
 	}
 }
@@ -521,6 +519,7 @@ int main(int argc, char *argv[])
 		.entity = ecs_entity(ecs, {.name = "IntegrateBodies"}),
 		.query.terms = {
 			{.id = ecs_id(Velocity)},
+			{.id = ecs_id(Pose)},
 			{ .id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf }
 		},
 		.callback = IntegrateBodies,

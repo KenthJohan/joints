@@ -1,4 +1,4 @@
-#include "example_gsolver/sim_types.h"
+#include "sim_types.h"
 
 ECS_COMPONENT_DECLARE(Pose) = 0;
 ECS_COMPONENT_DECLARE(Velocity) = 0;
