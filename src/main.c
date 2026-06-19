@@ -298,7 +298,10 @@ static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *
 void AssembleRevoluteRows(ecs_iter_t *it)
 {
 	assert(it->field_count >= 3);
+	const Impulse *impulse_field = ecs_field(it, Impulse, 0);
+	assert(impulse_field != NULL);
 	const Revolute *revolute_field = ecs_field(it, Revolute, 1);
+	assert(revolute_field != NULL);
 	const SolverConfig *solver_cfg_field = ecs_field(it, SolverConfig, 2);
 	assert(solver_cfg_field != NULL);
 
@@ -325,23 +328,19 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 			continue;
 		}
 
-		const Revolute *joint_revolute = revolute_field != NULL ? &revolute_field[i] : NULL;
-		if (joint_revolute == NULL) {
-			g_dbg_missing_revolute ++;
-			continue;
-		}
+		const Revolute *joint_revolute = &revolute_field[i];
 
 		const SolverConfig *cfg = &solver_cfg_field[0];
-		const double dt = (cfg != NULL && cfg->dt > 0.0) ? cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
-		const double beta = (cfg != NULL) ? cfg->baumgarte : 0.25;
-		const int configured_iters = (cfg != NULL && cfg->iterations > 0) ? cfg->iterations : 10;
+		const double dt = (cfg->dt > 0.0) ? cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
+		const double beta = cfg->baumgarte;
+		const int configured_iters = (cfg->iterations > 0) ? cfg->iterations : 10;
 		const int row_solver_iters = configured_iters > MAX_SOLVER_ITERS ? MAX_SOLVER_ITERS : configured_iters;
 		const Compliance *joint_compliance = ecs_get(it->world, joint, Compliance);
 		const double compliance_value = (joint_compliance != NULL) ? joint_compliance->value : 0.0;
 		const double alpha = (compliance_value > 0.0) ? (compliance_value / (dt * dt)) : 0.0;
-		const Impulse *joint_impulse = ecs_get(it->world, joint, Impulse);
+		const Impulse *joint_impulse = &impulse_field[i];
 		const int row_count_for_joint = (pivot_count - 1) * 2;
-		const double warm_lambda = (joint_impulse != NULL && row_count_for_joint > 0)
+		const double warm_lambda = (row_count_for_joint > 0)
 			? (0.5 * joint_impulse->value / sqrt((double)row_count_for_joint))
 			: 0.0;
 
@@ -489,8 +488,8 @@ int main(int argc, char *argv[])
 		.entity = ecs_entity(ecs, {.name = "AssembleRevoluteRows"}),
 		.query.terms = {
 			{.id = ecs_id(Impulse)},
-			{.id = ecs_id(Revolute), .oper = EcsOptional},
-			{ .id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf }
+			{.id = ecs_id(Revolute)},
+			{.id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf}
 		},
 		.callback = AssembleRevoluteRows,
 		.phase = EcsPreUpdate
