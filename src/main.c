@@ -468,15 +468,14 @@ int main(int argc, char *argv[])
 	ECS_SYSTEM(ecs, SolveConstraintRows, EcsOnUpdate, SolverConfig);
 	ECS_SYSTEM(ecs, IntegrateBodies, EcsPostUpdate, Velocity);
 
-	g_solver_config_entity = ecs_entity(ecs, {.name = "SolverConfigEntity"});
-	ecs_set(ecs, g_solver_config_entity, SolverConfig, {
-		.dt = 1.0 / 60.0,
-		.baumgarte = 0.25,
-		.iterations = 12,
-	});
-
 
 	if (ecs_script_run_file(ecs, "assets/entities.flecs")) {
+		return 1;
+	}
+
+	g_solver_config_entity = ecs_lookup(ecs, "SolverConfigEntity");
+	if (g_solver_config_entity == 0) {
+		printf("missing SolverConfigEntity in assets/entities.flecs\n");
 		return 1;
 	}
 
