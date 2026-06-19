@@ -297,8 +297,9 @@ static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *
 
 void AssembleRevoluteRows(ecs_iter_t *it)
 {
-	assert(it->field_count >= 2);
-	const SolverConfig *solver_cfg_field = ecs_field(it, SolverConfig, 1);
+	assert(it->field_count >= 3);
+	const Revolute *revolute_field = ecs_field(it, Revolute, 1);
+	const SolverConfig *solver_cfg_field = ecs_field(it, SolverConfig, 2);
 	assert(solver_cfg_field != NULL);
 
 	if (g_assembly_frame_marker != g_frame_counter) {
@@ -324,7 +325,7 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 			continue;
 		}
 
-		const Revolute *joint_revolute = ecs_get(it->world, joint, Revolute);
+		const Revolute *joint_revolute = revolute_field != NULL ? &revolute_field[i] : NULL;
 		if (joint_revolute == NULL) {
 			g_dbg_missing_revolute ++;
 			continue;
@@ -488,6 +489,7 @@ int main(int argc, char *argv[])
 		.entity = ecs_entity(ecs, {.name = "AssembleRevoluteRows"}),
 		.query.terms = {
 			{.id = ecs_id(Impulse)},
+			{.id = ecs_id(Revolute), .oper = EcsOptional},
 			{ .id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf }
 		},
 		.callback = AssembleRevoluteRows,
