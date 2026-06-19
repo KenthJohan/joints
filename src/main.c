@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <math.h>
 #include <stdint.h>
+#include <assert.h>
 #include <flecs.h>
 #include "example_gsolver/sim_types.h"
 
@@ -65,29 +66,6 @@ static void rotate_local(double x, double y, double angle, double *out_x, double
 	const double s = sin(angle);
 	*out_x = c * x - s * y;
 	*out_y = s * x + c * y;
-}
-
-static ecs_entity_t resolve_joint_simulation(const ecs_world_t *ecs, ecs_entity_t joint)
-{
-	const ecs_entity_t joints_scope = ecs_get_target(ecs, joint, EcsChildOf, 0);
-	if (joints_scope == 0) {
-		return 0;
-	}
-
-	return ecs_get_target(ecs, joints_scope, EcsChildOf, 0);
-}
-
-static const SolverConfig *resolve_joint_solver_config(const ecs_world_t *ecs, ecs_entity_t joint)
-{
-	const ecs_entity_t simulation = resolve_joint_simulation(ecs, joint);
-	if (simulation != 0) {
-		const SolverConfig *cfg = ecs_get(ecs, simulation, SolverConfig);
-		if (cfg != NULL) {
-			return cfg;
-		}
-	}
-
-	return NULL;
 }
 
 static ecs_entity_t resolve_instance_pivot(
@@ -319,6 +297,10 @@ static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *
 
 void AssembleRevoluteRows(ecs_iter_t *it)
 {
+	assert(it->field_count >= 2);
+	const SolverConfig *solver_cfg_field = ecs_field(it, SolverConfig, 1);
+	assert(solver_cfg_field != NULL);
+
 	if (g_assembly_frame_marker != g_frame_counter) {
 		g_assembly_frame_marker = g_frame_counter;
 		g_solver_cache.row_count = 0;
@@ -348,7 +330,7 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 			continue;
 		}
 
-		const SolverConfig *cfg = resolve_joint_solver_config(it->world, joint);
+		const SolverConfig *cfg = &solver_cfg_field[0];
 		const double dt = (cfg != NULL && cfg->dt > 0.0) ? cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
 		const double beta = (cfg != NULL) ? cfg->baumgarte : 0.25;
 		const int configured_iters = (cfg != NULL && cfg->iterations > 0) ? cfg->iterations : 10;
@@ -442,12 +424,13 @@ void SolveConstraintRows(ecs_iter_t *it)
 
 void UpdateJointImpulsesFromRows(ecs_iter_t *it)
 {
+	assert(it->field_count >= 2);
+	const SolverConfig *solver_cfg_field = ecs_field(it, SolverConfig, 1);
+	assert(solver_cfg_field != NULL);
+
 	for (int i = 0; i < it->count; i ++) {
 		const ecs_entity_t joint = it->entities[i];
-		const SolverConfig *cfg = resolve_joint_solver_config(it->world, joint);
-		if (cfg == NULL) {
-			continue;
-		}
+		const SolverConfig *cfg = &solver_cfg_field[0];
 
 		double lambda_sq = 0.0;
 		double residual_sq = 0.0;
@@ -504,7 +487,8 @@ int main(int argc, char *argv[])
 	ecs_system_init(ecs, &(ecs_system_desc_t){
 		.entity = ecs_entity(ecs, {.name = "AssembleRevoluteRows"}),
 		.query.terms = {
-			{.id = ecs_id(Impulse)}
+			{.id = ecs_id(Impulse)},
+			{ .id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf }
 		},
 		.callback = AssembleRevoluteRows,
 		.phase = EcsPreUpdate
@@ -522,7 +506,8 @@ int main(int argc, char *argv[])
 	ecs_system_init(ecs, &(ecs_system_desc_t){
 		.entity = ecs_entity(ecs, {.name = "UpdateJointImpulsesFromRows"}),
 		.query.terms = {
-			{.id = ecs_id(Impulse)}
+			{.id = ecs_id(Impulse)},
+			{ .id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf }
 		},
 		.callback = UpdateJointImpulsesFromRows,
 		.phase = EcsPostUpdate
