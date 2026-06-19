@@ -28,7 +28,7 @@ prefab tri_revolute {
 }
 
 simulations {
-    four_bar_a : tri_revolute {
+    tri_revolute_a : tri_revolute {
         SolverConfig: {
             dt: 0.016666666666666666,
             baumgarte: 0.25,
