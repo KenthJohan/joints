@@ -44,7 +44,6 @@ typedef struct {
 static SolverFrameCache g_solver_cache = {0};
 static uint64_t g_frame_counter = 0;
 static uint64_t g_assembly_frame_marker = UINT64_MAX;
-static ecs_entity_t g_solver_config_entity = 0;
 static int g_dbg_joint_total = 0;
 static int g_dbg_missing_mate = 0;
 static int g_dbg_missing_body = 0;
@@ -461,10 +460,14 @@ void UpdateJointImpulsesFromRows(ecs_iter_t *it)
 
 void IntegrateBodies(ecs_iter_t *it)
 {
-	const SolverConfig *cfg = ecs_get(it->world, g_solver_config_entity, SolverConfig);
-	const double dt = (cfg != NULL && cfg->dt > 0.0) ? cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
+	assert(it->field_count >= 2);
+	const SolverConfig *solver_cfg_field = ecs_field(it, SolverConfig, 1);
+	assert(solver_cfg_field != NULL);
 
 	for (int i = 0; i < it->count; i ++) {
+		const SolverConfig *cfg = &solver_cfg_field[0];
+		const double dt = (cfg->dt > 0.0) ? cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
+
 		const Velocity *velocity = ecs_get(it->world, it->entities[i], Velocity);
 		Pose *pose = ecs_get_mut(it->world, it->entities[i], Pose);
 		if (velocity == NULL || pose == NULL) {
@@ -517,19 +520,14 @@ int main(int argc, char *argv[])
 	ecs_system_init(ecs, &(ecs_system_desc_t){
 		.entity = ecs_entity(ecs, {.name = "IntegrateBodies"}),
 		.query.terms = {
-			{.id = ecs_id(Velocity)}
+			{.id = ecs_id(Velocity)},
+			{ .id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf }
 		},
 		.callback = IntegrateBodies,
 		.phase = EcsPostUpdate
 	});
 
 	if (ecs_script_run_file(ecs, "assets/entities.flecs")) {
-		return 1;
-	}
-
-	g_solver_config_entity = ecs_lookup(ecs, "simulations.four_bar_a");
-	if (g_solver_config_entity == 0) {
-		printf("missing simulations.four_bar_a in assets/entities.flecs\n");
 		return 1;
 	}
 
