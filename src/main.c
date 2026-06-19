@@ -5,8 +5,8 @@
 #include "example_gsolver/sim_types.h"
 
 #define MAX_CONSTRAINT_ROWS 4096
-#define MAX_SOLVER_JOINTS 2048
 #define MAX_SOLVER_ITERS 64
+#define MAX_JOINT_MATES 16
 
 typedef struct {
 	ecs_entity_t joint;
@@ -30,20 +30,12 @@ typedef struct {
 	double alpha;
 	double effective_mass;
 	double lambda;
-	int joint_slot;
+	int solver_iters;
 } ConstraintRow;
-
-typedef struct {
-	ecs_entity_t joint;
-	double residual_sq;
-	double lambda_sq;
-} JointResidual;
 
 typedef struct {
 	ConstraintRow rows[MAX_CONSTRAINT_ROWS];
 	int row_count;
-	JointResidual joints[MAX_SOLVER_JOINTS];
-	int joint_count;
 	double iter_residual[MAX_SOLVER_ITERS];
 	int iter_count;
 } SolverFrameCache;
@@ -75,23 +67,27 @@ static void rotate_local(double x, double y, double angle, double *out_x, double
 	*out_y = s * x + c * y;
 }
 
-static int find_or_add_joint_slot(ecs_entity_t joint)
+static ecs_entity_t resolve_joint_simulation(const ecs_world_t *ecs, ecs_entity_t joint)
 {
-	for (int i = 0; i < g_solver_cache.joint_count; i ++) {
-		if (g_solver_cache.joints[i].joint == joint) {
-			return i;
+	const ecs_entity_t joints_scope = ecs_get_target(ecs, joint, EcsChildOf, 0);
+	if (joints_scope == 0) {
+		return 0;
+	}
+
+	return ecs_get_target(ecs, joints_scope, EcsChildOf, 0);
+}
+
+static const SolverConfig *resolve_joint_solver_config(const ecs_world_t *ecs, ecs_entity_t joint)
+{
+	const ecs_entity_t simulation = resolve_joint_simulation(ecs, joint);
+	if (simulation != 0) {
+		const SolverConfig *cfg = ecs_get(ecs, simulation, SolverConfig);
+		if (cfg != NULL) {
+			return cfg;
 		}
 	}
 
-	if (g_solver_cache.joint_count >= MAX_SOLVER_JOINTS) {
-		return -1;
-	}
-
-	const int slot = g_solver_cache.joint_count ++;
-	g_solver_cache.joints[slot].joint = joint;
-	g_solver_cache.joints[slot].residual_sq = 0.0;
-	g_solver_cache.joints[slot].lambda_sq = 0.0;
-	return slot;
+	return NULL;
 }
 
 static ecs_entity_t resolve_instance_pivot(
@@ -124,40 +120,162 @@ static ecs_entity_t resolve_instance_pivot(
 	return ecs_lookup_child(ecs, instance_body, pivot_name);
 }
 
-static void resolve_joint_mates(
+static int resolve_joint_mates(
 	const ecs_world_t *ecs,
 	ecs_entity_t joint,
-	ecs_entity_t *pivot_a,
-	ecs_entity_t *pivot_b)
+	ecs_entity_t *pivots,
+	int max_pivots)
 {
-	*pivot_a = ecs_get_target(ecs, joint, ecs_id(Mate), 0);
-	*pivot_b = ecs_get_target(ecs, joint, ecs_id(Mate), 1);
-
+	int count = 0;
 	const ecs_entity_t base_joint = ecs_get_target(ecs, joint, EcsIsA, 0);
-	if (base_joint != 0) {
-		const ecs_entity_t base_pivot_a = ecs_get_target(ecs, base_joint, ecs_id(Mate), 0);
-		const ecs_entity_t base_pivot_b = ecs_get_target(ecs, base_joint, ecs_id(Mate), 1);
 
-		if (*pivot_a == 0) {
-			*pivot_a = base_pivot_a;
+	for (int i = 0; i < max_pivots; i ++) {
+		ecs_entity_t pivot = ecs_get_target(ecs, joint, ecs_id(Mate), i);
+		if (pivot == 0 && base_joint != 0) {
+			pivot = ecs_get_target(ecs, base_joint, ecs_id(Mate), i);
 		}
-		if (*pivot_b == 0) {
-			*pivot_b = base_pivot_b;
+		if (pivot == 0) {
+			break;
 		}
+
+		ecs_entity_t remapped = resolve_instance_pivot(ecs, joint, pivot);
+		if (remapped != 0) {
+			pivot = remapped;
+		}
+
+		pivots[count ++] = pivot;
 	}
 
-	if (*pivot_a != 0) {
-		ecs_entity_t remapped_a = resolve_instance_pivot(ecs, joint, *pivot_a);
-		if (remapped_a != 0) {
-			*pivot_a = remapped_a;
-		}
+	return count;
+}
+
+/* Return -1 when out of row capacity, 0 when pair cannot be assembled, 1 on success. */
+static int append_revolute_pair_rows(
+	ecs_world_t *ecs,
+	ecs_entity_t joint,
+	ecs_entity_t pivot_a,
+	ecs_entity_t pivot_b,
+	const Revolute *joint_revolute,
+	double beta,
+	double dt,
+	double alpha,
+	double warm_lambda,
+	int row_solver_iters)
+{
+	if (g_solver_cache.row_count + 2 > MAX_CONSTRAINT_ROWS) {
+		return -1;
 	}
-	if (*pivot_b != 0) {
-		ecs_entity_t remapped_b = resolve_instance_pivot(ecs, joint, *pivot_b);
-		if (remapped_b != 0) {
-			*pivot_b = remapped_b;
-		}
+
+	const ecs_entity_t body_a = ecs_get_target(ecs, pivot_a, EcsChildOf, 0);
+	const ecs_entity_t body_b = ecs_get_target(ecs, pivot_b, EcsChildOf, 0);
+	if (body_a == 0 || body_b == 0) {
+		g_dbg_missing_body ++;
+		return 0;
 	}
+
+	const Pose *pose_a = ecs_get(ecs, body_a, Pose);
+	const Pose *pose_b = ecs_get(ecs, body_b, Pose);
+	const Mass *mass_a = ecs_get(ecs, body_a, Mass);
+	const Mass *mass_b = ecs_get(ecs, body_b, Mass);
+	const Inertia *inertia_a = ecs_get(ecs, body_a, Inertia);
+	const Inertia *inertia_b = ecs_get(ecs, body_b, Inertia);
+	const LocalOffset *local_a = ecs_get(ecs, pivot_a, LocalOffset);
+	const LocalOffset *local_b = ecs_get(ecs, pivot_b, LocalOffset);
+
+	if (pose_a == NULL || pose_b == NULL || mass_a == NULL || mass_b == NULL ||
+		inertia_a == NULL || inertia_b == NULL || local_a == NULL || local_b == NULL) {
+		g_dbg_missing_data ++;
+		if (!g_dbg_printed_missing_data) {
+			g_dbg_printed_missing_data = 1;
+			printf("assembly missing data joint=%s pose_a=%d pose_b=%d mass_a=%d mass_b=%d inertia_a=%d inertia_b=%d local_a=%d local_b=%d\n",
+				ecs_get_name(ecs, joint),
+				pose_a != NULL,
+				pose_b != NULL,
+				mass_a != NULL,
+				mass_b != NULL,
+				inertia_a != NULL,
+				inertia_b != NULL,
+				local_a != NULL,
+				local_b != NULL);
+		}
+		return 0;
+	}
+
+	double ra_x, ra_y;
+	double rb_x, rb_y;
+	rotate_local(local_a->x, local_a->y, pose_a->angle, &ra_x, &ra_y);
+	rotate_local(local_b->x, local_b->y, pose_b->angle, &rb_x, &rb_y);
+
+	const double anchor_ax = pose_a->x + ra_x;
+	const double anchor_ay = pose_a->y + ra_y;
+	const double anchor_bx = pose_b->x + rb_x;
+	const double anchor_by = pose_b->y + rb_y;
+
+	const double dx = anchor_bx - anchor_ax;
+	const double dy = anchor_by - anchor_ay;
+
+	double axis_x = joint_revolute->x;
+	double axis_y = joint_revolute->y;
+	const double axis_len = sqrt(axis_x * axis_x + axis_y * axis_y);
+	if (axis_len < 1e-9) {
+		axis_x = 1.0;
+		axis_y = 0.0;
+	} else {
+		axis_x /= axis_len;
+		axis_y /= axis_len;
+	}
+
+	const double tangent_x = -axis_y;
+	const double tangent_y = axis_x;
+	const double axes[2][2] = {
+		{axis_x, axis_y},
+		{tangent_x, tangent_y}
+	};
+
+	for (int row_axis = 0; row_axis < 2; row_axis ++) {
+		ConstraintRow *row = &g_solver_cache.rows[g_solver_cache.row_count ++];
+		const double nx = axes[row_axis][0];
+		const double ny = axes[row_axis][1];
+
+		row->joint = joint;
+		row->body_a = body_a;
+		row->body_b = body_b;
+		row->anchor_ax = anchor_ax;
+		row->anchor_ay = anchor_ay;
+		row->anchor_bx = anchor_bx;
+		row->anchor_by = anchor_by;
+
+		row->jv_ax = -nx;
+		row->jv_ay = -ny;
+		row->jw_a = -(ra_x * ny - ra_y * nx);
+		row->jv_bx = nx;
+		row->jv_by = ny;
+		row->jw_b = rb_x * ny - rb_y * nx;
+
+		row->inv_mass_a = inv_if_nonzero(mass_a->value);
+		row->inv_mass_b = inv_if_nonzero(mass_b->value);
+		row->inv_inertia_a = inv_if_nonzero(inertia_a->value);
+		row->inv_inertia_b = inv_if_nonzero(inertia_b->value);
+		row->bias = (beta / dt) * (dx * nx + dy * ny);
+		row->alpha = alpha;
+		row->lambda = warm_lambda;
+		row->solver_iters = row_solver_iters;
+
+		const double k =
+			row->inv_mass_a + row->inv_mass_b +
+			(row->jw_a * row->jw_a) * row->inv_inertia_a +
+			(row->jw_b * row->jw_b) * row->inv_inertia_b +
+			row->alpha;
+
+		if (k <= 1e-9) {
+			g_solver_cache.row_count --;
+			continue;
+		}
+
+		row->effective_mass = k;
+	}
+
+	return 1;
 }
 
 static void apply_impulse_delta(ecs_world_t *ecs, const ConstraintRow *row, double delta_lambda)
@@ -204,7 +322,6 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 	if (g_assembly_frame_marker != g_frame_counter) {
 		g_assembly_frame_marker = g_frame_counter;
 		g_solver_cache.row_count = 0;
-		g_solver_cache.joint_count = 0;
 		g_solver_cache.iter_count = 0;
 		g_dbg_joint_total = 0;
 		g_dbg_missing_mate = 0;
@@ -214,72 +331,16 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 		g_dbg_printed_missing_data = 0;
 	}
 
-	const double dt = (it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0);
-	const double beta = 0.25;
-
 	for (int i = 0; i < it->count; i ++) {
 		g_dbg_joint_total ++;
 
-		if (g_solver_cache.row_count + 2 > MAX_CONSTRAINT_ROWS) {
-			break;
-		}
-
 		const ecs_entity_t joint = it->entities[i];
-		ecs_entity_t pivot_a = 0;
-		ecs_entity_t pivot_b = 0;
-		resolve_joint_mates(it->world, joint, &pivot_a, &pivot_b);
-		if (pivot_a == 0 || pivot_b == 0) {
+		ecs_entity_t pivots[MAX_JOINT_MATES] = {0};
+		const int pivot_count = resolve_joint_mates(it->world, joint, pivots, MAX_JOINT_MATES);
+		if (pivot_count < 2) {
 			g_dbg_missing_mate ++;
 			continue;
 		}
-
-		const ecs_entity_t body_a = ecs_get_target(it->world, pivot_a, EcsChildOf, 0);
-		const ecs_entity_t body_b = ecs_get_target(it->world, pivot_b, EcsChildOf, 0);
-		if (body_a == 0 || body_b == 0) {
-			g_dbg_missing_body ++;
-			continue;
-		}
-
-		const Pose *pose_a = ecs_get(it->world, body_a, Pose);
-		const Pose *pose_b = ecs_get(it->world, body_b, Pose);
-		const Mass *mass_a = ecs_get(it->world, body_a, Mass);
-		const Mass *mass_b = ecs_get(it->world, body_b, Mass);
-		const Inertia *inertia_a = ecs_get(it->world, body_a, Inertia);
-		const Inertia *inertia_b = ecs_get(it->world, body_b, Inertia);
-		const LocalOffset *local_a = ecs_get(it->world, pivot_a, LocalOffset);
-		const LocalOffset *local_b = ecs_get(it->world, pivot_b, LocalOffset);
-
-		if (pose_a == NULL || pose_b == NULL || mass_a == NULL || mass_b == NULL ||
-			inertia_a == NULL || inertia_b == NULL || local_a == NULL || local_b == NULL) {
-			g_dbg_missing_data ++;
-			if (!g_dbg_printed_missing_data) {
-				g_dbg_printed_missing_data = 1;
-				printf("assembly missing data joint=%s pose_a=%d pose_b=%d mass_a=%d mass_b=%d inertia_a=%d inertia_b=%d local_a=%d local_b=%d\n",
-					ecs_get_name(it->world, joint),
-					pose_a != NULL,
-					pose_b != NULL,
-					mass_a != NULL,
-					mass_b != NULL,
-					inertia_a != NULL,
-					inertia_b != NULL,
-					local_a != NULL,
-					local_b != NULL);
-			}
-			continue;
-		}
-
-		double ra_x, ra_y;
-		double rb_x, rb_y;
-		rotate_local(local_a->x, local_a->y, pose_a->angle, &ra_x, &ra_y);
-		rotate_local(local_b->x, local_b->y, pose_b->angle, &rb_x, &rb_y);
-
-		const double anchor_ax = pose_a->x + ra_x;
-		const double anchor_ay = pose_a->y + ra_y;
-		const double anchor_bx = pose_b->x + rb_x;
-		const double anchor_by = pose_b->y + rb_y;
-
-		const double dx = anchor_bx - anchor_ax;
-		const double dy = anchor_by - anchor_ay;
 
 		const Revolute *joint_revolute = ecs_get(it->world, joint, Revolute);
 		if (joint_revolute == NULL) {
@@ -287,85 +348,41 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 			continue;
 		}
 
-		double axis_x = joint_revolute->x;
-		double axis_y = joint_revolute->y;
-		const double axis_len = sqrt(axis_x * axis_x + axis_y * axis_y);
-		if (axis_len < 1e-9) {
-			axis_x = 1.0;
-			axis_y = 0.0;
-		} else {
-			axis_x /= axis_len;
-			axis_y /= axis_len;
-		}
-
-		const double tangent_x = -axis_y;
-		const double tangent_y = axis_x;
+		const SolverConfig *cfg = resolve_joint_solver_config(it->world, joint);
+		const double dt = (cfg != NULL && cfg->dt > 0.0) ? cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
+		const double beta = (cfg != NULL) ? cfg->baumgarte : 0.25;
+		const int configured_iters = (cfg != NULL && cfg->iterations > 0) ? cfg->iterations : 10;
+		const int row_solver_iters = configured_iters > MAX_SOLVER_ITERS ? MAX_SOLVER_ITERS : configured_iters;
 		const Compliance *joint_compliance = ecs_get(it->world, joint, Compliance);
 		const double compliance_value = (joint_compliance != NULL) ? joint_compliance->value : 0.0;
 		const double alpha = (compliance_value > 0.0) ? (compliance_value / (dt * dt)) : 0.0;
 		const Impulse *joint_impulse = ecs_get(it->world, joint, Impulse);
-		const double warm_lambda = (joint_impulse != NULL) ? (0.5 * joint_impulse->value) : 0.0;
-		const int joint_slot = find_or_add_joint_slot(joint);
-		if (joint_slot < 0) {
-			continue;
-		}
+		const int row_count_for_joint = (pivot_count - 1) * 2;
+		const double warm_lambda = (joint_impulse != NULL && row_count_for_joint > 0)
+			? (0.5 * joint_impulse->value / sqrt((double)row_count_for_joint))
+			: 0.0;
 
-		const double axes[2][2] = {
-			{axis_x, axis_y},
-			{tangent_x, tangent_y}
-		};
-
-		for (int row_axis = 0; row_axis < 2; row_axis ++) {
-			ConstraintRow *row = &g_solver_cache.rows[g_solver_cache.row_count ++];
-			const double nx = axes[row_axis][0];
-			const double ny = axes[row_axis][1];
-
-			row->joint = joint;
-			row->body_a = body_a;
-			row->body_b = body_b;
-			row->anchor_ax = anchor_ax;
-			row->anchor_ay = anchor_ay;
-			row->anchor_bx = anchor_bx;
-			row->anchor_by = anchor_by;
-
-			row->jv_ax = -nx;
-			row->jv_ay = -ny;
-			row->jw_a = -(ra_x * ny - ra_y * nx);
-			row->jv_bx = nx;
-			row->jv_by = ny;
-			row->jw_b = rb_x * ny - rb_y * nx;
-
-			row->inv_mass_a = inv_if_nonzero(mass_a->value);
-			row->inv_mass_b = inv_if_nonzero(mass_b->value);
-			row->inv_inertia_a = inv_if_nonzero(inertia_a->value);
-			row->inv_inertia_b = inv_if_nonzero(inertia_b->value);
-			row->bias = (beta / dt) * (dx * nx + dy * ny);
-			row->alpha = alpha;
-			row->lambda = warm_lambda;
-			row->joint_slot = joint_slot;
-
-			const double k =
-				row->inv_mass_a + row->inv_mass_b +
-				(row->jw_a * row->jw_a) * row->inv_inertia_a +
-				(row->jw_b * row->jw_b) * row->inv_inertia_b +
-				row->alpha;
-
-			if (k <= 1e-9) {
-				g_solver_cache.row_count --;
-				continue;
+		for (int mate_index = 1; mate_index < pivot_count; mate_index ++) {
+			const int append_result = append_revolute_pair_rows(
+				it->world,
+				joint,
+				pivots[0],
+				pivots[mate_index],
+				joint_revolute,
+				beta,
+				dt,
+				alpha,
+				warm_lambda,
+				row_solver_iters);
+			if (append_result < 0) {
+				break;
 			}
-
-			row->effective_mass = k;
 		}
 	}
 }
 
 void SolveConstraintRows(ecs_iter_t *it)
 {
-	const SolverConfig *cfg = ecs_get(it->world, g_solver_config_entity, SolverConfig);
-	const int configured_iters = (cfg != NULL && cfg->iterations > 0) ? cfg->iterations : 10;
-	const int solver_iters = configured_iters > MAX_SOLVER_ITERS ? MAX_SOLVER_ITERS : configured_iters;
-
 	if (g_solver_cache.row_count == 0) {
 		printf("[frame %llu] global convergence no_rows joints=%d missing_mate=%d missing_body=%d missing_revolute=%d missing_data=%d\n",
 			(unsigned long long)g_frame_counter,
@@ -378,9 +395,14 @@ void SolveConstraintRows(ecs_iter_t *it)
 		return;
 	}
 
-	for (int i = 0; i < g_solver_cache.joint_count; i ++) {
-		g_solver_cache.joints[i].residual_sq = 0.0;
-		g_solver_cache.joints[i].lambda_sq = 0.0;
+	int solver_iters = 0;
+	for (int row_index = 0; row_index < g_solver_cache.row_count; row_index ++) {
+		if (g_solver_cache.rows[row_index].solver_iters > solver_iters) {
+			solver_iters = g_solver_cache.rows[row_index].solver_iters;
+		}
+	}
+	if (solver_iters <= 0) {
+		solver_iters = 1;
 	}
 
 	for (int row_index = 0; row_index < g_solver_cache.row_count; row_index ++) {
@@ -392,6 +414,9 @@ void SolveConstraintRows(ecs_iter_t *it)
 
 		for (int row_index = 0; row_index < g_solver_cache.row_count; row_index ++) {
 			ConstraintRow *row = &g_solver_cache.rows[row_index];
+			if (iter >= row->solver_iters) {
+				continue;
+			}
 			const double residual = compute_row_residual(it->world, row);
 			const double delta_lambda = -residual / row->effective_mass;
 			row->lambda += delta_lambda;
@@ -399,9 +424,6 @@ void SolveConstraintRows(ecs_iter_t *it)
 
 			const double post_residual = compute_row_residual(it->world, row);
 			global_sq += post_residual * post_residual;
-			if (iter == solver_iters - 1) {
-				g_solver_cache.joints[row->joint_slot].residual_sq += post_residual * post_residual;
-			}
 		}
 
 		g_solver_cache.iter_residual[iter] = sqrt(global_sq);
@@ -409,34 +431,49 @@ void SolveConstraintRows(ecs_iter_t *it)
 
 	g_solver_cache.iter_count = solver_iters;
 
-	for (int row_index = 0; row_index < g_solver_cache.row_count; row_index ++) {
-		ConstraintRow *row = &g_solver_cache.rows[row_index];
-		g_solver_cache.joints[row->joint_slot].lambda_sq += row->lambda * row->lambda;
-	}
-
-	for (int joint_index = 0; joint_index < g_solver_cache.joint_count; joint_index ++) {
-		const ecs_entity_t joint = g_solver_cache.joints[joint_index].joint;
-		Impulse *joint_impulse = ecs_get_mut(it->world, joint, Impulse);
-		if (joint_impulse != NULL) {
-			joint_impulse->value = sqrt(g_solver_cache.joints[joint_index].lambda_sq);
-			ecs_modified(it->world, joint, Impulse);
-		}
-	}
-
 	printf("[frame %llu] global convergence", (unsigned long long)g_frame_counter);
 	for (int iter = 0; iter < g_solver_cache.iter_count; iter ++) {
 		printf(" i%d=%.3e", iter, g_solver_cache.iter_residual[iter]);
 	}
 	printf("\n");
 
-	for (int joint_index = 0; joint_index < g_solver_cache.joint_count; joint_index ++) {
-		const char *joint_name = ecs_get_name(it->world, g_solver_cache.joints[joint_index].joint);
-		printf("  joint=%s residual_norm=%.3e\n",
-			joint_name != NULL ? joint_name : "<unnamed>",
-			sqrt(g_solver_cache.joints[joint_index].residual_sq));
-	}
-
 	g_frame_counter ++;
+}
+
+void UpdateJointImpulsesFromRows(ecs_iter_t *it)
+{
+	for (int i = 0; i < it->count; i ++) {
+		const ecs_entity_t joint = it->entities[i];
+		const SolverConfig *cfg = resolve_joint_solver_config(it->world, joint);
+		if (cfg == NULL) {
+			continue;
+		}
+
+		double lambda_sq = 0.0;
+		double residual_sq = 0.0;
+		for (int row_index = 0; row_index < g_solver_cache.row_count; row_index ++) {
+			const ConstraintRow *row = &g_solver_cache.rows[row_index];
+			if (row->joint != joint) {
+				continue;
+			}
+
+			lambda_sq += row->lambda * row->lambda;
+			const double residual = compute_row_residual(it->world, row);
+			residual_sq += residual * residual;
+		}
+
+		Impulse *joint_impulse = ecs_get_mut(it->world, joint, Impulse);
+		if (joint_impulse != NULL) {
+			joint_impulse->value = sqrt(lambda_sq);
+			ecs_modified(it->world, joint, Impulse);
+		}
+
+		const char *joint_name = ecs_get_name(it->world, joint);
+		printf("  joint=%s residual_norm=%.3e cfg_iters=%d\n",
+			joint_name != NULL ? joint_name : "<unnamed>",
+			sqrt(residual_sq),
+			cfg->iterations);
+	}
 }
 
 void IntegrateBodies(ecs_iter_t *it)
@@ -464,10 +501,41 @@ int main(int argc, char *argv[])
 
 	ECS_IMPORT(ecs, SimTypes);
 
-	ECS_SYSTEM(ecs, AssembleRevoluteRows, EcsPreUpdate, Impulse);
-	ECS_SYSTEM(ecs, SolveConstraintRows, EcsOnUpdate, SolverConfig);
-	ECS_SYSTEM(ecs, IntegrateBodies, EcsPostUpdate, Velocity);
+	ecs_system_init(ecs, &(ecs_system_desc_t){
+		.entity = ecs_entity(ecs, {.name = "AssembleRevoluteRows"}),
+		.query.terms = {
+			{.id = ecs_id(Impulse)}
+		},
+		.callback = AssembleRevoluteRows,
+		.phase = EcsPreUpdate
+	});
 
+	ecs_system_init(ecs, &(ecs_system_desc_t){
+		.entity = ecs_entity(ecs, {.name = "SolveConstraintRows"}),
+		.query.terms = {
+			{.id = ecs_id(SolverConfig)}
+		},
+		.callback = SolveConstraintRows,
+		.phase = EcsOnUpdate
+	});
+
+	ecs_system_init(ecs, &(ecs_system_desc_t){
+		.entity = ecs_entity(ecs, {.name = "UpdateJointImpulsesFromRows"}),
+		.query.terms = {
+			{.id = ecs_id(Impulse)}
+		},
+		.callback = UpdateJointImpulsesFromRows,
+		.phase = EcsPostUpdate
+	});
+
+	ecs_system_init(ecs, &(ecs_system_desc_t){
+		.entity = ecs_entity(ecs, {.name = "IntegrateBodies"}),
+		.query.terms = {
+			{.id = ecs_id(Velocity)}
+		},
+		.callback = IntegrateBodies,
+		.phase = EcsPostUpdate
+	});
 
 	if (ecs_script_run_file(ecs, "assets/entities.flecs")) {
 		return 1;

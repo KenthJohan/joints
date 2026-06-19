@@ -1,0 +1,66 @@
+prefab tri_revolute {
+    base {
+        pin {
+            LocalOffset: {x: 0.0, y: 0.0}
+        }
+    }
+
+    arm_b {
+        pin {
+            LocalOffset: {x: 0.0, y: 0.0}
+        }
+    }
+
+    arm_c {
+        pin {
+            LocalOffset: {x: 0.0, y: 0.0}
+        }
+    }
+
+    joints {
+        tri_joint {
+            (Mate, base.pin)
+            (Mate, arm_b.pin)
+            (Mate, arm_c.pin)
+            Revolute: {x: 0.0, y: 1.0}
+        }
+    }
+}
+
+simulations {
+    four_bar_a : tri_revolute {
+        SolverConfig: {
+            dt: 0.016666666666666666,
+            baumgarte: 0.25,
+            iterations: 16
+        }
+
+        base {
+            Pose: {x: 0.0, y: 0.0, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.0}
+            Mass: {value: 0.0}
+            Inertia: {value: 0.0}
+        }
+
+        arm_b {
+            Pose: {x: 1.2, y: 0.2, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: 1.2}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
+
+        arm_c {
+            Pose: {x: -1.0, y: -0.1, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: -0.8}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
+
+        joints {
+            tri_joint {
+                Compliance: {value: 0.0005}
+                Impulse: {value: 0.0}
+            }
+        }
+    }
+}
