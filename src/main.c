@@ -52,7 +52,6 @@ static SolverFrameCache g_solver_cache = {0};
 static uint64_t g_frame_counter = 0;
 static uint64_t g_assembly_frame_marker = UINT64_MAX;
 static ecs_entity_t g_solver_config_entity = 0;
-static ecs_query_t *g_body_query = NULL;
 static int g_dbg_joint_total = 0;
 static int g_dbg_missing_mate = 0;
 static int g_dbg_missing_body = 0;
@@ -437,43 +436,25 @@ void SolveConstraintRows(ecs_iter_t *it)
 			sqrt(g_solver_cache.joints[joint_index].residual_sq));
 	}
 
-	const double dt = (cfg != NULL && cfg->dt > 0.0) ? cfg->dt : (1.0 / 60.0);
-	if (g_body_query != NULL) {
-		ecs_iter_t body_it = ecs_query_iter(it->world, g_body_query);
-		while (ecs_query_next(&body_it)) {
-			for (int i = 0; i < body_it.count; i ++) {
-				const Velocity *velocity = ecs_get(it->world, body_it.entities[i], Velocity);
-				Pose *pose = ecs_get_mut(it->world, body_it.entities[i], Pose);
-				if (velocity == NULL || pose == NULL) {
-					continue;
-				}
-
-				pose->x += velocity->x * dt;
-				pose->y += velocity->y * dt;
-				pose->angle += velocity->angular * dt;
-				ecs_modified(it->world, body_it.entities[i], Pose);
-			}
-		}
-	}
-
 	g_frame_counter ++;
 }
 
 void IntegrateBodies(ecs_iter_t *it)
 {
-	const double dt = (it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0);
-
-	Pose *pose = ecs_field(it, Pose, 1);
+	const SolverConfig *cfg = ecs_get(it->world, g_solver_config_entity, SolverConfig);
+	const double dt = (cfg != NULL && cfg->dt > 0.0) ? cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
 
 	for (int i = 0; i < it->count; i ++) {
 		const Velocity *velocity = ecs_get(it->world, it->entities[i], Velocity);
-		if (velocity == NULL) {
+		Pose *pose = ecs_get_mut(it->world, it->entities[i], Pose);
+		if (velocity == NULL || pose == NULL) {
 			continue;
 		}
 
-		pose[i].x += velocity->x * dt;
-		pose[i].y += velocity->y * dt;
-		pose[i].angle += velocity->angular * dt;
+		pose->x += velocity->x * dt;
+		pose->y += velocity->y * dt;
+		pose->angle += velocity->angular * dt;
+		ecs_modified(it->world, it->entities[i], Pose);
 	}
 }
 
@@ -485,11 +466,7 @@ int main(int argc, char *argv[])
 
 	ECS_SYSTEM(ecs, AssembleRevoluteRows, EcsPreUpdate, Impulse);
 	ECS_SYSTEM(ecs, SolveConstraintRows, EcsOnUpdate, SolverConfig);
-	g_body_query = ecs_query(ecs, {
-		.terms = {
-			{ .id = ecs_id(Velocity) }
-		}
-	});
+	ECS_SYSTEM(ecs, IntegrateBodies, EcsPostUpdate, Velocity);
 
 	g_solver_config_entity = ecs_entity(ecs, {.name = "SolverConfigEntity"});
 	ecs_set(ecs, g_solver_config_entity, SolverConfig, {
@@ -512,11 +489,6 @@ int main(int argc, char *argv[])
 		if (!ecs_progress(ecs, (ecs_ftime_t)(1.0 / 60.0))) {
 			break;
 		}
-	}
-
-	if (g_body_query != NULL) {
-		ecs_query_fini(g_body_query);
-		g_body_query = NULL;
 	}
 
 	// Used for remote inspection with Flecs Explorer. See https://www.flecs.dev/explorer/?remote=true
