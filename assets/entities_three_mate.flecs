@@ -32,6 +32,7 @@ simulations {
         SolverConfig: {
             dt: 0.016666666666666666,
             baumgarte: 0.25,
+            compliance: 0.0005,
             iterations: 16
         }
 
@@ -54,13 +55,6 @@ simulations {
             Velocity: {x: 0.0, y: 0.0, angular: -0.8}
             Mass: {value: 1.0}
             Inertia: {value: 1.0}
-        }
-
-        joints {
-            tri_joint {
-                Compliance: {value: 0.0005}
-                Impulse: {value: 0.0}
-            }
         }
     }
 }
