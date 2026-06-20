@@ -18,11 +18,11 @@ typedef struct {
 	double jw;
 	double inv_mass;
 	double inv_inertia;
-} ConstraintBodyRow;
+} BodyConstraintTerm;
 
 typedef struct {
-	ConstraintBodyRow a;
-	ConstraintBodyRow b;
+	BodyConstraintTerm a;
+	BodyConstraintTerm b;
 	double bias;
 	double alpha;
 	double effective_mass;
@@ -49,8 +49,8 @@ static int g_dbg_missing_data = 0;
 static int g_dbg_printed_missing_data = 0;
 
 static double find_cached_lambda(
-	const ConstraintBodyRow *a,
-	const ConstraintBodyRow *b)
+	const BodyConstraintTerm *a,
+	const BodyConstraintTerm *b)
 {
 	for (int row_index = 0; row_index < g_prev_solver_cache.row_count; row_index ++) {
 		const ConstraintRow *cached = &g_prev_solver_cache.rows[row_index];
