@@ -35,8 +35,15 @@ prefab four_bar {
         }
     }
 
+    idler {
+        pin {
+            LocalOffset: {x: 0.0, y: 0.0}
+        }
+    }
+
     ground.left {
         (Revolute, crank.root)
+        (Revolute, idler.pin)
     }
 
     crank.tip {
@@ -89,6 +96,13 @@ simulations {
             Inertia: {value: 1.0}
         }
 
+        idler {
+            Pose: {x: -2.0, y: 0.0, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.0}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
+
     }
 
     four_bar_b : four_bar {
@@ -122,6 +136,13 @@ simulations {
 
         rocker {
             Pose: {x: 2.9, y: -0.1, angle: 0.0}
+            Velocity: {x: 0.0, y: 0.0, angular: 0.0}
+            Mass: {value: 1.0}
+            Inertia: {value: 1.0}
+        }
+
+        idler {
+            Pose: {x: -2.0, y: 0.0, angle: 0.0}
             Velocity: {x: 0.0, y: 0.0, angular: 0.0}
             Mass: {value: 1.0}
             Inertia: {value: 1.0}
