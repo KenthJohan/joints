@@ -434,6 +434,27 @@ void IntegrateBodies(ecs_iter_t *it)
 	}
 }
 
+void PrintRevolutePairs(ecs_iter_t *it)
+{
+	assert(it->field_count >= 1);
+
+	const ecs_id_t pair_id = ecs_field_id(it, 0);
+	if (!ECS_IS_PAIR(pair_id)) {
+		return;
+	}
+
+	const ecs_entity_t body_b = ecs_pair_second(it->world, pair_id);
+	const char *body_b_name = ecs_get_name(it->world, body_b);
+
+	for (int i = 0; i < it->count; i ++) {
+		const ecs_entity_t body_a = it->entities[i];
+		const char *body_a_name = ecs_get_name(it->world, body_a);
+		printf("%s-%s\n",
+			(body_a_name != NULL) ? body_a_name : "<unnamed>",
+			(body_b_name != NULL) ? body_b_name : "<unnamed>");
+	}
+}
+
 int main(int argc, char *argv[])
 {
 	ecs_world_t *ecs = ecs_init_w_args(argc, argv);
@@ -469,6 +490,15 @@ int main(int argc, char *argv[])
 		},
 		.callback = IntegrateBodies,
 		.phase = EcsPostUpdate
+	});
+
+	ecs_system_init(ecs, &(ecs_system_desc_t){
+		.entity = ecs_entity(ecs, {.name = "PrintRevolutePairs"}),
+		.query.terms = {
+			{.id = ecs_pair(ecs_id(Revolute), EcsWildcard)}
+		},
+		.callback = PrintRevolutePairs,
+		.phase = EcsOnStart
 	});
 
 	if (ecs_script_run_file(ecs, "assets/entities.flecs")) {
