@@ -42,6 +42,7 @@ typedef struct {
 } SolverFrameCache;
 
 static SolverFrameCache g_solver_cache = {0};
+static SolverFrameCache g_prev_solver_cache = {0};
 static uint64_t g_frame_counter = 0;
 static uint64_t g_assembly_frame_marker = UINT64_MAX;
 static int g_dbg_joint_total = 0;
@@ -50,6 +51,29 @@ static int g_dbg_missing_body = 0;
 static int g_dbg_missing_revolute = 0;
 static int g_dbg_missing_data = 0;
 static int g_dbg_printed_missing_data = 0;
+
+static double find_cached_lambda(
+	ecs_entity_t joint,
+	ecs_entity_t body_a,
+	ecs_entity_t body_b,
+	double jv_ax,
+	double jv_ay,
+	double jv_bx,
+	double jv_by)
+{
+	for (int row_index = 0; row_index < g_prev_solver_cache.row_count; row_index ++) {
+		const ConstraintRow *cached = &g_prev_solver_cache.rows[row_index];
+		if (cached->joint != joint || cached->body_a != body_a || cached->body_b != body_b) {
+			continue;
+		}
+		if (cached->jv_ax == jv_ax && cached->jv_ay == jv_ay &&
+			cached->jv_bx == jv_bx && cached->jv_by == jv_by) {
+			return cached->lambda;
+		}
+	}
+
+	return 0.0;
+}
 
 static double inv_if_nonzero(double value)
 {
@@ -135,7 +159,6 @@ static int append_revolute_pair_rows(
 	double beta,
 	double dt,
 	double alpha,
-	double warm_lambda,
 	int row_solver_iters)
 {
 	if (g_solver_cache.row_count + 2 > MAX_CONSTRAINT_ROWS) {
@@ -221,7 +244,14 @@ static int append_revolute_pair_rows(
 		row->inv_inertia_b = inv_if_nonzero(inertia_b->value);
 		row->bias = (beta / dt) * (dx * nx + dy * ny);
 		row->alpha = alpha;
-		row->lambda = warm_lambda;
+		row->lambda = find_cached_lambda(
+			joint,
+			body_a,
+			body_b,
+			row->jv_ax,
+			row->jv_ay,
+			row->jv_bx,
+			row->jv_by);
 		row->solver_iters = row_solver_iters;
 
 		const double k =
@@ -282,12 +312,10 @@ static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *
 
 void AssembleRevoluteRows(ecs_iter_t *it)
 {
-	assert(it->field_count >= 3);
-	const Impulse *impulse = ecs_field(it, Impulse, 0); // self
-	const Revolute *revolute = ecs_field(it, Revolute, 1); // self
-	const SolverConfig *solver_cfg = ecs_field(it, SolverConfig, 2); // shared
+	assert(it->field_count >= 2);
+	const Revolute *revolute = ecs_field(it, Revolute, 0); // self
+	const SolverConfig *solver_cfg = ecs_field(it, SolverConfig, 1); // shared
 
-	assert(impulse != NULL);
 	assert(revolute != NULL);
 	assert(solver_cfg != NULL);
 
@@ -318,14 +346,8 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 		const double beta = solver_cfg->baumgarte;
 		const int configured_iters = (solver_cfg->iterations > 0) ? solver_cfg->iterations : 10;
 		const int row_solver_iters = configured_iters > MAX_SOLVER_ITERS ? MAX_SOLVER_ITERS : configured_iters;
-		const Compliance *joint_compliance = ecs_get(it->world, joint, Compliance);
-		const double compliance_value = (joint_compliance != NULL) ? joint_compliance->value : 0.0;
+		const double compliance_value = solver_cfg->compliance;
 		const double alpha = (compliance_value > 0.0) ? (compliance_value / (dt * dt)) : 0.0;
-		const Impulse *joint_impulse = &impulse[i];
-		const int row_count_for_joint = (pivot_count - 1) * 2;
-		const double warm_lambda = (row_count_for_joint > 0)
-			? (0.5 * joint_impulse->value / sqrt((double)row_count_for_joint))
-			: 0.0;
 
 		for (int mate_index = 1; mate_index < pivot_count; mate_index ++) {
 			const int append_result = append_revolute_pair_rows(
@@ -336,7 +358,6 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 				beta,
 				dt,
 				alpha,
-				warm_lambda,
 				row_solver_iters);
 			if (append_result < 0) {
 				break;
@@ -348,6 +369,8 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 void SolveConstraintRows(ecs_iter_t *it)
 {
 	if (g_solver_cache.row_count == 0) {
+		g_prev_solver_cache.row_count = 0;
+		g_prev_solver_cache.iter_count = 0;
 		printf("[frame %llu] global convergence no_rows joints=%d missing_mate=%d missing_body=%d missing_revolute=%d missing_data=%d\n",
 			(unsigned long long)g_frame_counter,
 			g_dbg_joint_total,
@@ -400,45 +423,9 @@ void SolveConstraintRows(ecs_iter_t *it)
 		printf(" i%d=%.3e", iter, g_solver_cache.iter_residual[iter]);
 	}
 	printf("\n");
+	g_prev_solver_cache = g_solver_cache;
 
 	g_frame_counter ++;
-}
-
-void UpdateJointImpulsesFromRows(ecs_iter_t *it)
-{
-	assert(it->field_count >= 2);
-	const SolverConfig *solver_cfg = ecs_field(it, SolverConfig, 1); // shared
-
-	assert(solver_cfg != NULL);
-
-	for (int i = 0; i < it->count; i ++) {
-		const ecs_entity_t joint = it->entities[i];
-
-		double lambda_sq = 0.0;
-		double residual_sq = 0.0;
-		for (int row_index = 0; row_index < g_solver_cache.row_count; row_index ++) {
-			const ConstraintRow *row = &g_solver_cache.rows[row_index];
-			if (row->joint != joint) {
-				continue;
-			}
-
-			lambda_sq += row->lambda * row->lambda;
-			const double residual = compute_row_residual(it->world, row);
-			residual_sq += residual * residual;
-		}
-
-		Impulse *joint_impulse = ecs_get_mut(it->world, joint, Impulse);
-		if (joint_impulse != NULL) {
-			joint_impulse->value = sqrt(lambda_sq);
-			ecs_modified(it->world, joint, Impulse);
-		}
-
-		const char *joint_name = ecs_get_name(it->world, joint);
-		printf("  joint=%s residual_norm=%.3e cfg_iters=%d\n",
-			joint_name != NULL ? joint_name : "<unnamed>",
-			sqrt(residual_sq),
-			solver_cfg->iterations);
-	}
 }
 
 void IntegrateBodies(ecs_iter_t *it)
@@ -471,7 +458,6 @@ int main(int argc, char *argv[])
 	ecs_system_init(ecs, &(ecs_system_desc_t){
 		.entity = ecs_entity(ecs, {.name = "AssembleRevoluteRows"}),
 		.query.terms = {
-			{.id = ecs_id(Impulse)},
 			{.id = ecs_id(Revolute)},
 			{.id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf}
 		},
@@ -489,16 +475,6 @@ int main(int argc, char *argv[])
 	});
 
 	ecs_system_init(ecs, &(ecs_system_desc_t){
-		.entity = ecs_entity(ecs, {.name = "UpdateJointImpulsesFromRows"}),
-		.query.terms = {
-			{.id = ecs_id(Impulse)},
-			{ .id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf }
-		},
-		.callback = UpdateJointImpulsesFromRows,
-		.phase = EcsPostUpdate
-	});
-
-	ecs_system_init(ecs, &(ecs_system_desc_t){
 		.entity = ecs_entity(ecs, {.name = "IntegrateBodies"}),
 		.query.terms = {
 			{.id = ecs_id(Velocity)},
@@ -513,8 +489,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	printf("startup counts: Impulse=%d Revolute=%d SolverConfig=%d\n",
-		ecs_count_id(ecs, ecs_id(Impulse)),
+	printf("startup counts: Revolute=%d SolverConfig=%d\n",
 		ecs_count_id(ecs, ecs_id(Revolute)),
 		ecs_count_id(ecs, ecs_id(SolverConfig)));
 

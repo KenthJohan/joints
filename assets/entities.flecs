@@ -67,6 +67,7 @@ simulations {
         SolverConfig: {
             dt: 0.016666666666666666,
             baumgarte: 0.25,
+            compliance: 0.0,
             iterations: 12
         }
 
@@ -98,33 +99,13 @@ simulations {
             Inertia: {value: 1.0}
         }
 
-        joints {
-            ground_crank_joint {
-                Compliance: {value: 0.0}
-                Impulse: {value: 0.0}
-            }
-
-            crank_coupler_joint {
-                Compliance: {value: 0.0}
-                Impulse: {value: 0.0}
-            }
-
-            coupler_rocker_joint {
-                Compliance: {value: 0.0}
-                Impulse: {value: 0.0}
-            }
-
-            rocker_ground_joint {
-                Compliance: {value: 0.0}
-                Impulse: {value: 0.0}
-            }
-        }
     }
 
     four_bar_b : four_bar {
         SolverConfig: {
             dt: 0.016666666666666666,
             baumgarte: 0.25,
+            compliance: 0.001,
             iterations: 12
         }
 
@@ -156,26 +137,5 @@ simulations {
             Inertia: {value: 1.0}
         }
 
-        joints {
-            ground_crank_joint {
-                Compliance: {value: 0.001}
-                Impulse: {value: 0.0}
-            }
-
-            crank_coupler_joint {
-                Compliance: {value: 0.001}
-                Impulse: {value: 0.0}
-            }
-
-            coupler_rocker_joint {
-                Compliance: {value: 0.001}
-                Impulse: {value: 0.0}
-            }
-
-            rocker_ground_joint {
-                Compliance: {value: 0.001}
-                Impulse: {value: 0.0}
-            }
-        }
     }
 }

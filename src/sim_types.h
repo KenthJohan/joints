@@ -47,16 +47,9 @@ typedef struct {
 } Target;
 
 typedef struct {
-	double value;
-} Compliance;
-
-typedef struct {
-	double value;
-} Impulse;
-
-typedef struct {
 	double dt;
 	double baumgarte;
+	double compliance;
 	int iterations;
 } SolverConfig;
 
@@ -73,8 +66,6 @@ extern ECS_COMPONENT_DECLARE(Mate);
 extern ECS_COMPONENT_DECLARE(Revolute);
 extern ECS_COMPONENT_DECLARE(Range);
 extern ECS_COMPONENT_DECLARE(Target);
-extern ECS_COMPONENT_DECLARE(Compliance);
-extern ECS_COMPONENT_DECLARE(Impulse);
 extern ECS_COMPONENT_DECLARE(SolverConfig);
 
 void SimTypesImport(ecs_world_t *ecs);

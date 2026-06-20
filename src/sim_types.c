@@ -9,8 +9,6 @@ ECS_COMPONENT_DECLARE(Mate) = 0;
 ECS_COMPONENT_DECLARE(Revolute) = 0;
 ECS_COMPONENT_DECLARE(Range) = 0;
 ECS_COMPONENT_DECLARE(Target) = 0;
-ECS_COMPONENT_DECLARE(Compliance) = 0;
-ECS_COMPONENT_DECLARE(Impulse) = 0;
 ECS_COMPONENT_DECLARE(SolverConfig) = 0;
 
 void SimTypesImport(ecs_world_t *ecs)
@@ -27,8 +25,6 @@ void SimTypesImport(ecs_world_t *ecs)
 	ECS_COMPONENT_DEFINE(ecs, Revolute);
 	ECS_COMPONENT_DEFINE(ecs, Range);
 	ECS_COMPONENT_DEFINE(ecs, Target);
-	ECS_COMPONENT_DEFINE(ecs, Compliance);
-	ECS_COMPONENT_DEFINE(ecs, Impulse);
 	ECS_COMPONENT_DEFINE(ecs, SolverConfig);
 
 	ecs_struct_init(ecs,
@@ -78,20 +74,11 @@ void SimTypesImport(ecs_world_t *ecs)
 	});
 	ecs_struct_init(ecs,
 	&(ecs_struct_desc_t){
-	.entity = ecs_id(Compliance),
-	.members = {{"value", ecs_id(ecs_f64_t)}},
-	});
-	ecs_struct_init(ecs,
-	&(ecs_struct_desc_t){
-	.entity = ecs_id(Impulse),
-	.members = {{"value", ecs_id(ecs_f64_t)}},
-	});
-	ecs_struct_init(ecs,
-	&(ecs_struct_desc_t){
 	.entity = ecs_id(SolverConfig),
 	.members = {
 		{"dt", ecs_id(ecs_f64_t)},
 		{"baumgarte", ecs_id(ecs_f64_t)},
+		{"compliance", ecs_id(ecs_f64_t)},
 		{"iterations", ecs_id(ecs_i32_t)}
 	},
 	});
