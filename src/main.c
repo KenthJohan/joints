@@ -7,7 +7,7 @@
 
 #define MAX_CONSTRAINT_ROWS 4096
 #define MAX_SOLVER_ITERS 64
-#define MAX_JOINT_MATES 16
+#define MAX_REVOLUTE_TARGETS 16
 
 typedef struct {
 	ecs_entity_t joint;
@@ -46,7 +46,7 @@ static SolverFrameCache g_prev_solver_cache = {0};
 static uint64_t g_frame_counter = 0;
 static uint64_t g_assembly_frame_marker = UINT64_MAX;
 static int g_dbg_joint_total = 0;
-static int g_dbg_missing_mate = 0;
+static int g_dbg_missing_target = 0;
 static int g_dbg_missing_body = 0;
 static int g_dbg_missing_revolute = 0;
 static int g_dbg_missing_data = 0;
@@ -93,7 +93,7 @@ static void rotate_local(double x, double y, double angle, double *out_x, double
 
 static ecs_entity_t resolve_instance_pivot(
 	const ecs_world_t *ecs,
-	ecs_entity_t joint,
+	ecs_entity_t source_pivot,
 	ecs_entity_t base_pivot)
 {
 	if (base_pivot == 0) {
@@ -107,8 +107,8 @@ static ecs_entity_t resolve_instance_pivot(
 		return 0;
 	}
 
-	const ecs_entity_t joints_scope = ecs_get_target(ecs, joint, EcsChildOf, 0);
-	const ecs_entity_t simulation_scope = ecs_get_target(ecs, joints_scope, EcsChildOf, 0);
+	const ecs_entity_t source_body = ecs_get_target(ecs, source_pivot, EcsChildOf, 0);
+	const ecs_entity_t simulation_scope = ecs_get_target(ecs, source_body, EcsChildOf, 0);
 	if (simulation_scope == 0) {
 		return 0;
 	}
@@ -121,39 +121,10 @@ static ecs_entity_t resolve_instance_pivot(
 	return ecs_lookup_child(ecs, instance_body, pivot_name);
 }
 
-static int resolve_joint_mates(
-	const ecs_world_t *ecs,
-	ecs_entity_t joint,
-	ecs_entity_t *pivots,
-	int max_pivots)
-{
-	int count = 0;
-	const ecs_entity_t base_joint = ecs_get_target(ecs, joint, EcsIsA, 0);
-
-	for (int i = 0; i < max_pivots; i ++) {
-		ecs_entity_t pivot = ecs_get_target(ecs, joint, ecs_id(Mate), i);
-		if (pivot == 0 && base_joint != 0) {
-			pivot = ecs_get_target(ecs, base_joint, ecs_id(Mate), i);
-		}
-		if (pivot == 0) {
-			break;
-		}
-
-		ecs_entity_t remapped = resolve_instance_pivot(ecs, joint, pivot);
-		if (remapped != 0) {
-			pivot = remapped;
-		}
-
-		pivots[count ++] = pivot;
-	}
-
-	return count;
-}
-
 /* Return -1 when out of row capacity, 0 when pair cannot be assembled, 1 on success. */
 static int append_revolute_pair_rows(
 	ecs_world_t *ecs,
-	ecs_entity_t joint,
+	ecs_entity_t source_pivot,
 	ecs_entity_t pivot_a,
 	ecs_entity_t pivot_b,
 	double beta,
@@ -187,7 +158,7 @@ static int append_revolute_pair_rows(
 		if (!g_dbg_printed_missing_data) {
 			g_dbg_printed_missing_data = 1;
 			printf("assembly missing data joint=%s pose_a=%d pose_b=%d mass_a=%d mass_b=%d inertia_a=%d inertia_b=%d local_a=%d local_b=%d\n",
-				ecs_get_name(ecs, joint),
+				ecs_get_name(ecs, source_pivot),
 				pose_a != NULL,
 				pose_b != NULL,
 				mass_a != NULL,
@@ -223,7 +194,7 @@ static int append_revolute_pair_rows(
 		const double nx = axes[row_axis][0];
 		const double ny = axes[row_axis][1];
 
-		row->joint = joint;
+		row->joint = source_pivot;
 		row->body_a = body_a;
 		row->body_b = body_b;
 		row->anchor_ax = anchor_ax;
@@ -245,7 +216,7 @@ static int append_revolute_pair_rows(
 		row->bias = (beta / dt) * (dx * nx + dy * ny);
 		row->alpha = alpha;
 		row->lambda = find_cached_lambda(
-			joint,
+			source_pivot,
 			body_a,
 			body_b,
 			row->jv_ax,
@@ -312,11 +283,9 @@ static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *
 
 void AssembleRevoluteRows(ecs_iter_t *it)
 {
-	assert(it->field_count >= 2);
-	const Revolute *revolute = ecs_field(it, Revolute, 0); // self
-	const SolverConfig *solver_cfg = ecs_field(it, SolverConfig, 1); // shared
+	assert(it->field_count >= 3);
+	const SolverConfig *solver_cfg = ecs_field(it, SolverConfig, 2); // shared
 
-	assert(revolute != NULL);
 	assert(solver_cfg != NULL);
 
 	if (g_assembly_frame_marker != g_frame_counter) {
@@ -324,7 +293,7 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 		g_solver_cache.row_count = 0;
 		g_solver_cache.iter_count = 0;
 		g_dbg_joint_total = 0;
-		g_dbg_missing_mate = 0;
+		g_dbg_missing_target = 0;
 		g_dbg_missing_body = 0;
 		g_dbg_missing_revolute = 0;
 		g_dbg_missing_data = 0;
@@ -334,13 +303,8 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 	for (int i = 0; i < it->count; i ++) {
 		g_dbg_joint_total ++;
 
-		const ecs_entity_t joint = it->entities[i];
-		ecs_entity_t pivots[MAX_JOINT_MATES] = {0};
-		const int pivot_count = resolve_joint_mates(it->world, joint, pivots, MAX_JOINT_MATES);
-		if (pivot_count < 2) {
-			g_dbg_missing_mate ++;
-			continue;
-		}
+		const ecs_entity_t pivot_a = it->entities[i];
+		const ecs_entity_t base_pivot_a = ecs_get_target(it->world, pivot_a, EcsIsA, 0);
 
 		const double dt = (solver_cfg->dt > 0.0) ? solver_cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
 		const double beta = solver_cfg->baumgarte;
@@ -348,13 +312,27 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 		const int row_solver_iters = configured_iters > MAX_SOLVER_ITERS ? MAX_SOLVER_ITERS : configured_iters;
 		const double compliance_value = solver_cfg->compliance;
 		const double alpha = (compliance_value > 0.0) ? (compliance_value / (dt * dt)) : 0.0;
+		int appended_any = 0;
 
-		for (int mate_index = 1; mate_index < pivot_count; mate_index ++) {
+		for (int target_index = 0; target_index < MAX_REVOLUTE_TARGETS; target_index ++) {
+			ecs_entity_t pivot_b = ecs_get_target(it->world, pivot_a, ecs_id(Revolute), target_index);
+			if (pivot_b == 0 && base_pivot_a != 0) {
+				pivot_b = ecs_get_target(it->world, base_pivot_a, ecs_id(Revolute), target_index);
+			}
+			if (pivot_b == 0) {
+				break;
+			}
+
+			ecs_entity_t remapped = resolve_instance_pivot(it->world, pivot_a, pivot_b);
+			if (remapped != 0) {
+				pivot_b = remapped;
+			}
+
 			const int append_result = append_revolute_pair_rows(
 				it->world,
-				joint,
-				pivots[0],
-				pivots[mate_index],
+				pivot_a,
+				pivot_a,
+				pivot_b,
 				beta,
 				dt,
 				alpha,
@@ -362,6 +340,13 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 			if (append_result < 0) {
 				break;
 			}
+			if (append_result > 0) {
+				appended_any = 1;
+			}
+		}
+
+		if (!appended_any) {
+			g_dbg_missing_target ++;
 		}
 	}
 }
@@ -371,10 +356,10 @@ void SolveConstraintRows(ecs_iter_t *it)
 	if (g_solver_cache.row_count == 0) {
 		g_prev_solver_cache.row_count = 0;
 		g_prev_solver_cache.iter_count = 0;
-		printf("[frame %llu] global convergence no_rows joints=%d missing_mate=%d missing_body=%d missing_revolute=%d missing_data=%d\n",
+		printf("[frame %llu] global convergence no_rows joints=%d missing_target=%d missing_body=%d missing_revolute=%d missing_data=%d\n",
 			(unsigned long long)g_frame_counter,
 			g_dbg_joint_total,
-			g_dbg_missing_mate,
+			g_dbg_missing_target,
 			g_dbg_missing_body,
 			g_dbg_missing_revolute,
 			g_dbg_missing_data);
@@ -458,7 +443,8 @@ int main(int argc, char *argv[])
 	ecs_system_init(ecs, &(ecs_system_desc_t){
 		.entity = ecs_entity(ecs, {.name = "AssembleRevoluteRows"}),
 		.query.terms = {
-			{.id = ecs_id(Revolute)},
+			{.id = ecs_id(LocalOffset)},
+			{.id = ecs_pair(ecs_id(Revolute), EcsWildcard)},
 			{.id = ecs_id(SolverConfig), .src.id = EcsUp, .trav = EcsChildOf}
 		},
 		.callback = AssembleRevoluteRows,
@@ -489,8 +475,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	printf("startup counts: Revolute=%d SolverConfig=%d\n",
-		ecs_count_id(ecs, ecs_id(Revolute)),
+	printf("startup counts: SolverConfig=%d\n",
 		ecs_count_id(ecs, ecs_id(SolverConfig)));
 
 	for (int frame = 0; frame < 240; frame ++) {

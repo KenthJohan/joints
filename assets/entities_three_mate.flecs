@@ -17,13 +17,9 @@ prefab tri_revolute {
         }
     }
 
-    joints {
-        tri_joint {
-            (Mate, base.pin)
-            (Mate, arm_b.pin)
-            (Mate, arm_c.pin)
-            Revolute: {dummy: 0}
-        }
+    base.pin {
+        (Revolute, arm_b.pin)
+        (Revolute, arm_c.pin)
     }
 }
 

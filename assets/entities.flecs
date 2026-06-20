@@ -35,30 +35,20 @@ prefab four_bar {
         }
     }
 
-    joints {
-        ground_crank_joint {
-            (Mate, ground.left)
-            (Mate, crank.root)
-            Revolute: {dummy: 0}
-        }
+    ground.left {
+        (Revolute, crank.root)
+    }
 
-        crank_coupler_joint {
-            (Mate, crank.tip)
-            (Mate, coupler.left)
-            Revolute: {dummy: 0}
-        }
+    crank.tip {
+        (Revolute, coupler.left)
+    }
 
-        coupler_rocker_joint {
-            (Mate, coupler.right)
-            (Mate, rocker.root)
-            Revolute: {dummy: 0}
-        }
+    coupler.right {
+        (Revolute, rocker.root)
+    }
 
-        rocker_ground_joint {
-            (Mate, rocker.tip)
-            (Mate, ground.right)
-            Revolute: {dummy: 0}
-        }
+    rocker.tip {
+        (Revolute, ground.right)
     }
 }
 
