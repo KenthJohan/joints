@@ -64,7 +64,7 @@ void SimTypesImport(ecs_world_t *ecs)
 	ecs_struct_init(ecs,
 	&(ecs_struct_desc_t){
 	.entity = ecs_id(Revolute),
-	.members = {{"x", ecs_id(ecs_f64_t)}, {"y", ecs_id(ecs_f64_t)}},
+	.members = {{"dummy", ecs_id(ecs_i32_t)}},
 	});
 	ecs_struct_init(ecs,
 	&(ecs_struct_desc_t){

@@ -132,7 +132,6 @@ static int append_revolute_pair_rows(
 	ecs_entity_t joint,
 	ecs_entity_t pivot_a,
 	ecs_entity_t pivot_b,
-	const Revolute *joint_revolute,
 	double beta,
 	double dt,
 	double alpha,
@@ -191,22 +190,9 @@ static int append_revolute_pair_rows(
 	const double dx = anchor_bx - anchor_ax;
 	const double dy = anchor_by - anchor_ay;
 
-	double axis_x = joint_revolute->x;
-	double axis_y = joint_revolute->y;
-	const double axis_len = sqrt(axis_x * axis_x + axis_y * axis_y);
-	if (axis_len < 1e-9) {
-		axis_x = 1.0;
-		axis_y = 0.0;
-	} else {
-		axis_x /= axis_len;
-		axis_y /= axis_len;
-	}
-
-	const double tangent_x = -axis_y;
-	const double tangent_y = axis_x;
 	const double axes[2][2] = {
-		{axis_x, axis_y},
-		{tangent_x, tangent_y}
+		{1.0, 0.0},
+		{0.0, 1.0}
 	};
 
 	for (int row_axis = 0; row_axis < 2; row_axis ++) {
@@ -328,8 +314,6 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 			continue;
 		}
 
-		const Revolute *joint_revolute = &revolute[i];
-
 		const double dt = (solver_cfg->dt > 0.0) ? solver_cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
 		const double beta = solver_cfg->baumgarte;
 		const int configured_iters = (solver_cfg->iterations > 0) ? solver_cfg->iterations : 10;
@@ -349,7 +333,6 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 				joint,
 				pivots[0],
 				pivots[mate_index],
-				joint_revolute,
 				beta,
 				dt,
 				alpha,

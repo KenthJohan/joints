@@ -22,7 +22,7 @@ prefab tri_revolute {
             (Mate, base.pin)
             (Mate, arm_b.pin)
             (Mate, arm_c.pin)
-            Revolute: {x: 0.0, y: 1.0}
+            Revolute: {dummy: 0}
         }
     }
 }

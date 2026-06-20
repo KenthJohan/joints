@@ -26,8 +26,15 @@ typedef struct {
 	int dummy;
 } Mate;
 
+/**
+ * @brief Tag data for a 2D revolute joint relation.
+ *
+ * The pin-hole anchors are computed from each mated pivot's LocalOffset and
+ * body Pose. The 2D rotation axis is the implicit out-of-plane Z axis.
+ */
 typedef struct {
-	double x, y;
+	/** Placeholder field so the component has a concrete struct layout. */
+	int dummy;
 } Revolute;
 
 typedef struct {
