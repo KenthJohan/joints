@@ -10,23 +10,19 @@
 #define MAX_REVOLUTE_TARGETS 16
 
 typedef struct {
-	ecs_entity_t joint;
-	ecs_entity_t body_a;
-	ecs_entity_t body_b;
-	double anchor_ax;
-	double anchor_ay;
-	double anchor_bx;
-	double anchor_by;
-	double jv_ax;
-	double jv_ay;
-	double jw_a;
-	double jv_bx;
-	double jv_by;
-	double jw_b;
-	double inv_mass_a;
-	double inv_mass_b;
-	double inv_inertia_a;
-	double inv_inertia_b;
+	ecs_entity_t body;
+	double anchor_x;
+	double anchor_y;
+	double jv_x;
+	double jv_y;
+	double jw;
+	double inv_mass;
+	double inv_inertia;
+} ConstraintBodyRow;
+
+typedef struct {
+	ConstraintBodyRow a;
+	ConstraintBodyRow b;
 	double bias;
 	double alpha;
 	double effective_mass;
@@ -53,21 +49,16 @@ static int g_dbg_missing_data = 0;
 static int g_dbg_printed_missing_data = 0;
 
 static double find_cached_lambda(
-	ecs_entity_t joint,
-	ecs_entity_t body_a,
-	ecs_entity_t body_b,
-	double jv_ax,
-	double jv_ay,
-	double jv_bx,
-	double jv_by)
+	const ConstraintBodyRow *a,
+	const ConstraintBodyRow *b)
 {
 	for (int row_index = 0; row_index < g_prev_solver_cache.row_count; row_index ++) {
 		const ConstraintRow *cached = &g_prev_solver_cache.rows[row_index];
-		if (cached->joint != joint || cached->body_a != body_a || cached->body_b != body_b) {
+		if (cached->a.body != a->body || cached->b.body != b->body) {
 			continue;
 		}
-		if (cached->jv_ax == jv_ax && cached->jv_ay == jv_ay &&
-			cached->jv_bx == jv_bx && cached->jv_by == jv_by) {
+		if (cached->a.jv_x == a->jv_x && cached->a.jv_y == a->jv_y &&
+			cached->b.jv_x == b->jv_x && cached->b.jv_y == b->jv_y) {
 			return cached->lambda;
 		}
 	}
@@ -124,7 +115,6 @@ static ecs_entity_t resolve_instance_pivot(
 /* Return -1 when out of row capacity, 0 when pair cannot be assembled, 1 on success. */
 static int append_revolute_pair_rows(
 	ecs_world_t *ecs,
-	ecs_entity_t source_pivot,
 	ecs_entity_t pivot_a,
 	ecs_entity_t pivot_b,
 	double beta,
@@ -158,7 +148,7 @@ static int append_revolute_pair_rows(
 		if (!g_dbg_printed_missing_data) {
 			g_dbg_printed_missing_data = 1;
 			printf("assembly missing data joint=%s pose_a=%d pose_b=%d mass_a=%d mass_b=%d inertia_a=%d inertia_b=%d local_a=%d local_b=%d\n",
-				ecs_get_name(ecs, source_pivot),
+				ecs_get_name(ecs, pivot_a),
 				pose_a != NULL,
 				pose_b != NULL,
 				mass_a != NULL,
@@ -194,41 +184,33 @@ static int append_revolute_pair_rows(
 		const double nx = axes[row_axis][0];
 		const double ny = axes[row_axis][1];
 
-		row->joint = source_pivot;
-		row->body_a = body_a;
-		row->body_b = body_b;
-		row->anchor_ax = anchor_ax;
-		row->anchor_ay = anchor_ay;
-		row->anchor_bx = anchor_bx;
-		row->anchor_by = anchor_by;
+		row->a.body = body_a;
+		row->b.body = body_b;
+		row->a.anchor_x = anchor_ax;
+		row->a.anchor_y = anchor_ay;
+		row->b.anchor_x = anchor_bx;
+		row->b.anchor_y = anchor_by;
 
-		row->jv_ax = -nx;
-		row->jv_ay = -ny;
-		row->jw_a = -(ra_x * ny - ra_y * nx);
-		row->jv_bx = nx;
-		row->jv_by = ny;
-		row->jw_b = rb_x * ny - rb_y * nx;
+		row->a.jv_x = -nx;
+		row->a.jv_y = -ny;
+		row->a.jw = -(ra_x * ny - ra_y * nx);
+		row->b.jv_x = nx;
+		row->b.jv_y = ny;
+		row->b.jw = rb_x * ny - rb_y * nx;
 
-		row->inv_mass_a = inv_if_nonzero(mass_a->value);
-		row->inv_mass_b = inv_if_nonzero(mass_b->value);
-		row->inv_inertia_a = inv_if_nonzero(inertia_a->value);
-		row->inv_inertia_b = inv_if_nonzero(inertia_b->value);
+		row->a.inv_mass = inv_if_nonzero(mass_a->value);
+		row->b.inv_mass = inv_if_nonzero(mass_b->value);
+		row->a.inv_inertia = inv_if_nonzero(inertia_a->value);
+		row->b.inv_inertia = inv_if_nonzero(inertia_b->value);
 		row->bias = (beta / dt) * (dx * nx + dy * ny);
 		row->alpha = alpha;
-		row->lambda = find_cached_lambda(
-			source_pivot,
-			body_a,
-			body_b,
-			row->jv_ax,
-			row->jv_ay,
-			row->jv_bx,
-			row->jv_by);
+		row->lambda = find_cached_lambda(&row->a, &row->b);
 		row->solver_iters = row_solver_iters;
 
 		const double k =
-			row->inv_mass_a + row->inv_mass_b +
-			(row->jw_a * row->jw_a) * row->inv_inertia_a +
-			(row->jw_b * row->jw_b) * row->inv_inertia_b +
+			row->a.inv_mass + row->b.inv_mass +
+			(row->a.jw * row->a.jw) * row->a.inv_inertia +
+			(row->b.jw * row->b.jw) * row->b.inv_inertia +
 			row->alpha;
 
 		if (k <= 1e-9) {
@@ -248,34 +230,34 @@ static void apply_impulse_delta(ecs_world_t *ecs, const ConstraintRow *row, doub
 		return;
 	}
 
-	Velocity *vel_a = ecs_get_mut(ecs, row->body_a, Velocity);
+	Velocity *vel_a = ecs_get_mut(ecs, row->a.body, Velocity);
 	if (vel_a != NULL) {
-		vel_a->x += row->inv_mass_a * row->jv_ax * delta_lambda;
-		vel_a->y += row->inv_mass_a * row->jv_ay * delta_lambda;
-		vel_a->angular += row->inv_inertia_a * row->jw_a * delta_lambda;
-		ecs_modified(ecs, row->body_a, Velocity);
+		vel_a->x += row->a.inv_mass * row->a.jv_x * delta_lambda;
+		vel_a->y += row->a.inv_mass * row->a.jv_y * delta_lambda;
+		vel_a->angular += row->a.inv_inertia * row->a.jw * delta_lambda;
+		ecs_modified(ecs, row->a.body, Velocity);
 	}
 
-	Velocity *vel_b = ecs_get_mut(ecs, row->body_b, Velocity);
+	Velocity *vel_b = ecs_get_mut(ecs, row->b.body, Velocity);
 	if (vel_b != NULL) {
-		vel_b->x += row->inv_mass_b * row->jv_bx * delta_lambda;
-		vel_b->y += row->inv_mass_b * row->jv_by * delta_lambda;
-		vel_b->angular += row->inv_inertia_b * row->jw_b * delta_lambda;
-		ecs_modified(ecs, row->body_b, Velocity);
+		vel_b->x += row->b.inv_mass * row->b.jv_x * delta_lambda;
+		vel_b->y += row->b.inv_mass * row->b.jv_y * delta_lambda;
+		vel_b->angular += row->b.inv_inertia * row->b.jw * delta_lambda;
+		ecs_modified(ecs, row->b.body, Velocity);
 	}
 }
 
 static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *row)
 {
-	const Velocity *vel_a = ecs_get(ecs, row->body_a, Velocity);
-	const Velocity *vel_b = ecs_get(ecs, row->body_b, Velocity);
+	const Velocity *vel_a = ecs_get(ecs, row->a.body, Velocity);
+	const Velocity *vel_b = ecs_get(ecs, row->b.body, Velocity);
 
 	double jv = 0.0;
 	if (vel_a != NULL) {
-		jv += row->jv_ax * vel_a->x + row->jv_ay * vel_a->y + row->jw_a * vel_a->angular;
+		jv += row->a.jv_x * vel_a->x + row->a.jv_y * vel_a->y + row->a.jw * vel_a->angular;
 	}
 	if (vel_b != NULL) {
-		jv += row->jv_bx * vel_b->x + row->jv_by * vel_b->y + row->jw_b * vel_b->angular;
+		jv += row->b.jv_x * vel_b->x + row->b.jv_y * vel_b->y + row->b.jw * vel_b->angular;
 	}
 
 	return jv + row->bias + row->alpha * row->lambda;
@@ -330,7 +312,6 @@ void AssembleRevoluteRows(ecs_iter_t *it)
 
 			const int append_result = append_revolute_pair_rows(
 				it->world,
-				pivot_a,
 				pivot_a,
 				pivot_b,
 				beta,
