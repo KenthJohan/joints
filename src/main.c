@@ -205,6 +205,9 @@ static int append_revolute_pair_rows(
 		row->a.jw = -(double)glm_vec2_cross(ra, axis);
 		// Sequential Impulse row assembly: angular Jacobian for body B (Jw = r x n).
 		row->b.jw = (double)glm_vec2_cross(rb, axis);
+		// With unit row axes here (x/y basis), |a.jv|^2 = a.jv.x^2 + a.jv.y^2 = 1
+		// and |b.jv|^2 = b.jv.x^2 + b.jv.y^2 = 1, so linear terms simplify to
+		// a.inv_mass and b.inv_mass (no explicit jv-square factors needed).
 
 		row->a.inv_mass = inv_if_nonzero(mass_a->value);
 		row->b.inv_mass = inv_if_nonzero(mass_b->value);
@@ -216,6 +219,11 @@ static int append_revolute_pair_rows(
 		row->solver.solver_iters = row_solver_iters;
 
 		// Per-row denominator: k = J M^-1 J^T + alpha (compliance regularization).
+		// J is a 1x6 row vector (Jacobian): [a.jv.x, a.jv.y, a.jw, b.jv.x, b.jv.y, b.jw].
+		// M is a 6x6 diagonal matrix (generalized mass): diag(m_a, m_a, I_a, m_b, m_b, I_b).
+		// M^-1 is a 6x6 diagonal matrix using [a.inv_mass, a.inv_mass, a.inv_inertia,
+		//                                     b.inv_mass, b.inv_mass, b.inv_inertia].
+		// J^T is a 6x1 column vector, alpha is a scalar, and k is a scalar.
 		const double k =
 			row->a.inv_mass + row->b.inv_mass +
 			(row->a.jw * row->a.jw) * row->a.inv_inertia +
