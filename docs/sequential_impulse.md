@@ -21,6 +21,95 @@ Short name:
 - A Baumgarte bias term drives positional error reduction through velocity constraints.
 - Compliance enters as an additive regularization term in the row denominator/equation.
 
+
+
+
+
+
+
+
+
+## Joint Types
+
+
+| Joint type                          | Rows | What is constrained                                                       |
+| ----------------------------------- | ---- | ------------------------------------------------------------------------- |
+| Revolute                            | 2    | Coincidence of the two anchor points                                      |
+| Prismatic                           | 2    | Relative translation perpendicular to the slide axis, plus relative angle |
+| Prismatic                           | 2    | Relative translation perpendicular to the slide axis, plus relative angle |
+| Distance                            | 1    | Separation along the line between two anchor points                       |
+| Weld                                | 3    | Relative translation and relative angle                                   |
+| Fixed rotation                      | 1    | Relative angle only                                                       |
+| Motor on revolute axis              | 1    | Target relative angular speed                                             |
+| Motor on prismatic axis             | 1    | Target relative slide speed                                               |
+| Limit on revolute or prismatic axis | 1    | Relative angle or slide position bound                                    |
+
+## Joint Types Definition
+
+This table lists scalar constraint rows used by each joint type and shows how each row is defined. The $n$ column gives the row direction/axis for that row, and the Jacobian columns give the corresponding linear and angular terms for body A and body B.
+
+| Joint type                          | Row | $n$                                                               | $J_{vA}$            | $J_{vB}$            | $J_{\omega A}$      | $J_{\omega B}$      |
+| ----------------------------------- | --- | ----------------------------------------------------------------- | ------------------- | ------------------- | ------------------- | ------------------- |
+| Revolute                            | 0   | $(1,0)$                                                           | $-n$                | $n$                 | $-(r_A \times n)$   | $r_B \times n$      |
+|                                     | 1   | $(0,1)$                                                           | $-n$                | $n$                 | $-(r_A \times n)$   | $r_B \times n$      |
+| Prismatic                           | 0   | $t^\perp$                                                         | $-n$                | $n$                 | $-(r_A \times n)$   | $r_B \times n$      |
+|                                     | 1   | $-$                                                               | $0$                 | $0$                 | $-1$                | $1$                 |
+| Distance                            | 0   | $\dfrac{(x_B+r_B)-(x_A+r_A)}{\left\|(x_B+r_B)-(x_A+r_A)\right\|}$ | $-n$                | $n$                 | $-(r_A \times n)$   | $r_B \times n$      |
+| Weld                                | 0   | $(1,0)$                                                           | $-n$                | $n$                 | $-(r_A \times n)$   | $r_B \times n$      |
+|                                     | 1   | $(0,1)$                                                           | $-n$                | $n$                 | $-(r_A \times n)$   | $r_B \times n$      |
+|                                     | 2   | $-$                                                               | $0$                 | $0$                 | $-1$                | $1$                 |
+| Fixed rotation                      | 0   | $-$                                                               | $0$                 | $0$                 | $-1$                | $1$                 |
+| Motor on revolute axis              | 0   | $-$                                                               | $0$                 | $0$                 | $-1$                | $1$                 |
+| Motor on prismatic axis             | 0   | $t$                                                               | $-t$                | $t$                 | $-(r_A \times t)$   | $r_B \times t$      |
+| Limit on revolute or prismatic axis | 0   | Revolute: $-$, Prismatic: $t$                                     | Same as limited DOF | Same as limited DOF | Same as limited DOF | Same as limited DOF |
+
+## Variables Used In This Section
+
+| Symbol                        | Type                  | Meaning                                                                                                                             |
+| ----------------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| $\alpha$                      | scalar                | Compliance regularization (CFM-like softening) term added to the row equation and denominator.                                      |
+| $J$                           | row matrix (Jacobian) | Constraint Jacobian row for a scalar constraint equation.                                                                           |
+| $J_{vA},\ J_{vB}$             | vectors               | Linear Jacobian blocks for body A and body B in the row.                                                                            |
+| $J_{\omega A},\ J_{\omega B}$ | scalars               | Angular Jacobian blocks for body A and body B in the row.                                                                           |
+| $Jv_A,\ Jv_B$                 | scalars               | Per-body velocity contributions used to form the row residual.                                                                      |
+| $k$                           | scalar                | Effective row denominator, $k = J M^{-1} J^T + \alpha$, used to scale impulse updates.                                              |
+| $M$                           | matrix                | Generalized mass matrix for the bodies in a constraint row; $M^{-1}$ is the generalized inverse mass matrix used in $J M^{-1} J^T$. |
+| $\lambda$                     | scalar                | Accumulated impulse for the row (warm-started and iteratively updated).                                                             |
+| $\mathrm{bias}$               | scalar                | Stabilization term added to the row residual (for example Baumgarte bias).                                                          |
+| $r$                           | scalar                | Row residual before the impulse update.                                                                                             |
+
+## 2D/Body-Specific Kinematic Formula Entries
+
+| Symbol                | Type           | Meaning                                                                               |
+| --------------------- | -------------- | ------------------------------------------------------------------------------------- |
+| $n$                   | 2D unit vector | Constraint row direction in world space.                                              |
+| $r$                   | 2D vector      | Offset from body center of mass to the constraint point in world space.               |
+| $r^\perp$             | 2D vector      | Perpendicular vector to $r$, defined as $r^\perp = (-r_y,\ r_x)$.                     |
+| $r_A,\ r_B$           | 2D vectors     | Point offsets for body A and body B, respectively.                                    |
+| $r \times n$          | scalar         | 2D scalar cross product $r \times n = r_x n_y - r_y n_x = n \cdot r^\perp$.           |
+| $v_A,\ v_B$           | 2D vectors     | Linear velocities of body A and body B, respectively.                                 |
+| $v_p$                 | 2D vector      | Velocity of a constraint point on a body in world space: $v_p = v + \omega \times r$. |
+| $\omega$              | scalar         | Angular velocity in 2D (about out-of-plane z-axis).                                   |
+| $\omega_A,\ \omega_B$ | scalars        | Angular velocities of body A and body B, respectively.                                |
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ## What The Denominator Block Is
 
 During row assembly, each scalar row computes a denominator term that scales the impulse update:
@@ -209,61 +298,7 @@ So, for equality-only behavior, a prismatic joint usually contributes 2 rows in 
 
 Optional motor/limit behavior along axis $t$ is usually implemented as additional rows (or inequality rows) on top of these base rows.
 
-### Joint Type Summary
 
-#### Description Table
-
-| Joint type                          | What is constrained                                                       | Rows needed in 2D           |
-| ----------------------------------- | ------------------------------------------------------------------------- | --------------------------- |
-| Revolute                            | Coincidence of the two anchor points                                      | 2 equality rows             |
-| Prismatic                           | Relative translation perpendicular to the slide axis, plus relative angle | 2 equality rows             |
-| Prismatic                           | Relative translation perpendicular to the slide axis, plus relative angle | 2 equality rows             |
-| Distance                            | Separation along the line between two anchor points                       | 1 equality row              |
-| Weld                                | Relative translation and relative angle                                   | 3 equality rows             |
-| Weld                                | Relative translation and relative angle                                   | 3 equality rows             |
-| Fixed rotation                      | Relative angle only                                                       | 1 equality row              |
-| Motor on revolute axis              | Target relative angular speed                                             | Usually +1 row              |
-| Motor on prismatic axis             | Target relative slide speed                                               | Usually +1 row              |
-| Limit on revolute or prismatic axis | Relative angle or slide position bound                                    | 0 or 1 active row per limit |
-
-#### Math Table
-
-| Joint type                            | $n$                                                     | $J_{vA}$              | $J_{vB}$              | $J_{\omega A}$        | $J_{\omega B}$        |
-| ------------------------------------- | ------------------------------------------------------- | --------------------- | --------------------- | --------------------- | --------------------- |
-| Revolute 0                            | $(1,0)$                                                 | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
-| Revolute 1                            | $(0,1)$                                                 | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
-| Prismatic 0                           | $t^\perp$                                              | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
-| Prismatic 1                           | $-$                                                     | $0$                   | $0$                   | $-1$                  | $1$                   |
-| Distance 0                            | $n$                                                     | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
-| Weld 0                                | $(1,0)$                                                 | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
-| Weld 1                                | $(0,1)$                                                 | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
-| Weld 2                                | $-$                                                     | $0$                   | $0$                   | $-1$                  | $1$                   |
-| Fixed rotation 0                      | $-$                                                     | $0$                   | $0$                   | $-1$                  | $1$                   |
-| Motor on revolute axis 0              | $-$                                                     | $0$                   | $0$                   | $-1$                  | $1$                   |
-| Motor on prismatic axis 0             | $t$                                                     | $-t$                  | $t$                   | $-(r_A \times t)$     | $r_B \times t$        |
-| Limit on revolute or prismatic axis 0 | $n_{\mathrm{limit}}$                                   | Same as limited DOF   | Same as limited DOF   | Same as limited DOF   | Same as limited DOF   |
-
-### Variables Used In This Section
-
-| Symbol                | Type                  | Meaning                                                                                                                             |
-| --------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| $\alpha$              | scalar                | Compliance regularization (CFM-like softening) term added to the row equation and denominator.                                      |
-| $J$                   | row matrix (Jacobian) | Full constraint Jacobian row: $[J_{vAx},\ J_{vAy},\ J_{\omega A},\ J_{vBx},\ J_{vBy},\ J_{\omega B}]$.                              |
-| $J_{\omega A}$        | scalar                | Body A angular Jacobian component, $J_{\omega A}=r_A \times n$.                                                                     |
-| $J_{\omega B}$        | scalar                | Body B angular Jacobian component, $J_{\omega B}=-(r_B \times n)$.                                                                  |
-| $Jv_A$                | scalar                | Body A contribution to row velocity, $Jv_A = n \cdot (v_A + \omega_A r_A^\perp)$.                                                   |
-| $Jv_B$                | scalar                | Body B contribution to row velocity, $Jv_B = n \cdot (v_B + \omega_B r_B^\perp)$.                                                   |
-| $k$                   | scalar                | Effective row denominator, $k = J M^{-1} J^T + \alpha$, used to scale impulse updates.                                              |
-| $M$                   | matrix                | Generalized mass matrix for the bodies in a constraint row; $M^{-1}$ is the generalized inverse mass matrix used in $J M^{-1} J^T$. |
-| $n$                   | 2D unit vector        | Constraint row direction in world space (for example x-axis or y-axis).                                                             |
-| $r$                   | 2D vector             | Offset from body center of mass to the constraint point in world space.                                                             |
-| $r^\perp$             | 2D vector             | Perpendicular vector to $r$, defined as $r^\perp = (-r_y,\ r_x)$.                                                                   |
-| $r_A,\ r_B$           | 2D vectors            | Point offsets for body A and body B, respectively ($r_A, r_B$).                                                                     |
-| $r \times n$          | scalar                | 2D scalar cross product $r \times n = r_x n_y - r_y n_x = n \cdot r^\perp$.                                                         |
-| $v_A,\ v_B$           | 2D vectors            | Linear velocities of body A and body B, respectively ($v_A, v_B$).                                                                  |
-| $v_p$                 | 2D vector             | Velocity of a constraint point on a body in world space ($v_p$).                                                                    |
-| $\omega$              | scalar                | Angular velocity in 2D (about out-of-plane z-axis).                                                                                 |
-| $\omega_A,\ \omega_B$ | scalars               | Angular velocities of body A and body B, respectively ($\omega_A, \omega_B$).                                                       |
 
 
 
