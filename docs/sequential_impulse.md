@@ -37,21 +37,102 @@ The translational rows use unit world axes (x and y). With unit row directions, 
 
 The rotational contribution remains explicit through angular Jacobian terms and inverse inertias. Compliance is added through $\alpha$ as regularization.
 
+### How The Angular Jacobian Is Calculated (2D)
+
+For a scalar velocity constraint along world direction $n$, the point velocity on each body is:
+
+$$
+v_p = v + \omega \times r
+$$
+
+In 2D, angular velocity is scalar and:
+
+$$
+\omega \times r = \omega\, r^\perp,
+\qquad
+r^\perp = (-r_y,\ r_x)
+$$
+
+So the constraint velocity is:
+
+$$
+Jv = n \cdot (v_A + \omega_A r_A^\perp) - n \cdot (v_B + \omega_B r_B^\perp)
+$$
+
+Collecting coefficients of $\omega_A$ and $\omega_B$ gives the angular Jacobian entries:
+
+$$
+J_{\omega A} = n \cdot r_A^\perp,
+\qquad
+J_{\omega B} = -\,n \cdot r_B^\perp
+$$
+
+Equivalent scalar form (2D cross product):
+
+$$
+n \cdot r^\perp = r_x n_y - r_y n_x = r \times n
+$$
+
+Therefore:
+
+$$
+J_{\omega A} = r_A \times n,
+\qquad
+J_{\omega B} = -(r_B \times n)
+$$
+
+For axis rows used in this solver:
+
+$$
+n = (1,0) \Rightarrow J_{\omega} = -r_y,
+\qquad
+n = (0,1) \Rightarrow J_{\omega} = r_x
+$$
+
+These are the angular terms that appear in both $Jv$ and the denominator contribution $J M^{-1} J^T$.
+
+### Variables Used In This Section
+
+| Symbol | Type | Meaning |
+|---|---|---|
+| $v_p$ | 2D vector | Velocity of a constraint point on a body in world space. |
+| $v$ | 2D vector | Linear velocity of the body center of mass in world space. |
+| $\omega$ | scalar | Angular velocity in 2D (about out-of-plane z-axis). |
+| $r$ | 2D vector | Offset from body center of mass to the constraint point in world space. |
+| $r^\perp$ | 2D vector | Perpendicular vector to $r$, defined as $(-r_y,\ r_x)$. |
+| $n$ | 2D unit vector | Constraint row direction in world space (for example x-axis or y-axis). |
+| $Jv$ | scalar | Relative velocity along the row direction after applying the Jacobian to current velocities. |
+| $J_{\omega A}$ | scalar | Angular Jacobian coefficient multiplying body A angular velocity $\omega_A$. |
+| $J_{\omega B}$ | scalar | Angular Jacobian coefficient multiplying body B angular velocity $\omega_B$. |
+| $r_A,\ r_B$ | 2D vectors | Point offsets for body A and body B, respectively. |
+| $v_A,\ v_B$ | 2D vectors | Linear velocities of body A and body B, respectively. |
+| $\omega_A,\ \omega_B$ | scalars | Angular velocities of body A and body B, respectively. |
+| $r \times n$ | scalar | 2D scalar cross product, $r_x n_y - r_y n_x$, equal to $n \cdot r^\perp$. |
+
+Type notes:
+
+- 2D vector values have components $(x,y)$.
+- Scalars are single real numbers.
+
 ## Solver Form Used
 
 For each scalar row, solve iteratively:
 
-Jv + bias + alpha * lambda = 0
+$$
+Jv + \mathrm{bias} + \alpha \lambda = 0
+$$
 
 with update:
 
-delta_lambda = -(Jv + bias + alpha * lambda) / k
+$$
+\Delta \lambda = -\frac{Jv + \mathrm{bias} + \alpha \lambda}{k}
+$$
 
 where:
 
-- k = J M^-1 J^T + alpha
-- alpha is compliance-derived softening
-- lambda is warm-started and iteratively refined
+- $k = J M^{-1} J^T + \alpha$
+- $\alpha$ is compliance-derived softening
+- $\lambda$ is warm-started and iteratively refined
 
 Interpretation:
 
