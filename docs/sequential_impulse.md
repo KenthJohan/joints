@@ -53,10 +53,14 @@ $$
 r^\perp = (-r_y,\ r_x)
 $$
 
-So the constraint velocity is:
+So the per-body constraint-velocity contributions are:
 
 $$
-Jv = n \cdot (v_A + \omega_A r_A^\perp) - n \cdot (v_B + \omega_B r_B^\perp)
+Jv_A = n \cdot (v_A + \omega_A r_A^\perp)
+$$
+
+$$
+Jv_B = n \cdot (v_B + \omega_B r_B^\perp)
 $$
 
 Collecting coefficients of $\omega_A$ and $\omega_B$ gives the angular Jacobian entries:
@@ -89,7 +93,7 @@ n = (1,0) \Rightarrow J_{\omega} = -r_y,
 n = (0,1) \Rightarrow J_{\omega} = r_x
 $$
 
-These are the angular terms that appear in both $Jv$ and the denominator contribution $J M^{-1} J^T$.
+These are the angular terms that appear in both $Jv_A$/$Jv_B$ and the denominator contribution $J M^{-1} J^T$.
 
 ### What Components $J$ Consists Of
 
@@ -135,47 +139,40 @@ $$
 
 ### Variables Used In This Section
 
-| Base Symbol | Full Symbol Form | Type | Meaning |
-|---|---|---|---|
-| $\alpha$ | $\alpha$ | scalar | Compliance regularization (CFM-like softening) term added to the row equation and denominator. |
-| $J$ | $J$ | row matrix (Jacobian) | Full constraint Jacobian row: $[J_{vAx},\ J_{vAy},\ J_{\omega A},\ J_{vBx},\ J_{vBy},\ J_{\omega B}]$. |
-| $J$ | $J_{vAx}$ | scalar | Body A linear Jacobian x component, $J_{vAx}=n_x$. |
-| $J$ | $J_{vAy}$ | scalar | Body A linear Jacobian y component, $J_{vAy}=n_y$. |
-| $J$ | $J_{vBx}$ | scalar | Body B linear Jacobian x component, $J_{vBx}=-n_x$. |
-| $J$ | $J_{vBy}$ | scalar | Body B linear Jacobian y component, $J_{vBy}=-n_y$. |
-| $J$ | $J_{\omega A}$ | scalar | Body A angular Jacobian component, $J_{\omega A}=r_A \times n$. |
-| $J$ | $J_{\omega B}$ | scalar | Body B angular Jacobian component, $J_{\omega B}=-(r_B \times n)$. |
-| $v$ | $Jv$ | scalar | Relative row velocity $Jv$ after applying the Jacobian to generalized velocities. |
-| $k$ | $k$ | scalar | Effective row denominator, $k = J M^{-1} J^T + \alpha$, used to scale impulse updates. |
-| $M$ | $M$ | matrix | Generalized mass matrix for the bodies in a constraint row; $M^{-1}$ is the generalized inverse mass matrix used in $J M^{-1} J^T$. |
-| $n$ | $n$ | 2D unit vector | Constraint row direction in world space (for example x-axis or y-axis). |
-| $r$ | $r$ | 2D vector | Offset from body center of mass to the constraint point in world space. |
-| $r$ | $r^\perp$ | 2D vector | Perpendicular vector to $r$, defined as $r^\perp = (-r_y,\ r_x)$. |
-| $r$ | $r_A,\ r_B$ | 2D vectors | Point offsets for body A and body B, respectively ($r_A, r_B$). |
-| $r$ | $r \times n$ | scalar | 2D scalar cross product $r \times n = r_x n_y - r_y n_x = n \cdot r^\perp$. |
-| $v$ | $v_A,\ v_B$ | 2D vectors | Linear velocities of body A and body B, respectively ($v_A, v_B$). |
-| $v$ | $v_{\mathrm{com}}$ | 2D vector | Linear velocity of the body center of mass in world space. |
-| $v$ | $v_p$ | 2D vector | Velocity of a constraint point on a body in world space ($v_p$). |
-| $\omega$ | $\omega$ | scalar | Angular velocity in 2D (about out-of-plane z-axis). |
-| $\omega$ | $\omega_A,\ \omega_B$ | scalars | Angular velocities of body A and body B, respectively ($\omega_A, \omega_B$). |
+| Symbol      | Type                  | Meaning                                                                                                                             |
+| --------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| $\alpha$              | scalar                | Compliance regularization (CFM-like softening) term added to the row equation and denominator.                                      |
+| $J$                   | row matrix (Jacobian) | Full constraint Jacobian row: $[J_{vAx},\ J_{vAy},\ J_{\omega A},\ J_{vBx},\ J_{vBy},\ J_{\omega B}]$.                              |
+| $J_{\omega A}$        | scalar                | Body A angular Jacobian component, $J_{\omega A}=r_A \times n$.                                                                     |
+| $J_{\omega B}$        | scalar                | Body B angular Jacobian component, $J_{\omega B}=-(r_B \times n)$.                                                                  |
+| $Jv_A$                | scalar                | Body A contribution to row velocity, $Jv_A = n \cdot (v_A + \omega_A r_A^\perp)$.                                                |
+| $Jv_B$                | scalar                | Body B contribution to row velocity, $Jv_B = n \cdot (v_B + \omega_B r_B^\perp)$.                                                |
+| $k$                   | scalar                | Effective row denominator, $k = J M^{-1} J^T + \alpha$, used to scale impulse updates.                                              |
+| $M$                   | matrix                | Generalized mass matrix for the bodies in a constraint row; $M^{-1}$ is the generalized inverse mass matrix used in $J M^{-1} J^T$. |
+| $n$                   | 2D unit vector        | Constraint row direction in world space (for example x-axis or y-axis).                                                             |
+| $r$                   | 2D vector             | Offset from body center of mass to the constraint point in world space.                                                             |
+| $r^\perp$             | 2D vector             | Perpendicular vector to $r$, defined as $r^\perp = (-r_y,\ r_x)$.                                                                   |
+| $r_A,\ r_B$           | 2D vectors            | Point offsets for body A and body B, respectively ($r_A, r_B$).                                                                     |
+| $r \times n$          | scalar                | 2D scalar cross product $r \times n = r_x n_y - r_y n_x = n \cdot r^\perp$.                                                         |
+| $v_A,\ v_B$           | 2D vectors            | Linear velocities of body A and body B, respectively ($v_A, v_B$).                                                                  |
+| $v_p$                 | 2D vector             | Velocity of a constraint point on a body in world space ($v_p$).                                                                    |
+| $\omega$              | scalar                | Angular velocity in 2D (about out-of-plane z-axis).                                                                                 |
+| $\omega_A,\ \omega_B$ | scalars               | Angular velocities of body A and body B, respectively ($\omega_A, \omega_B$).                                                       |
 
-Type notes:
 
-- 2D vector values have components $(x,y)$.
-- Scalars are single real numbers.
 
 ## Solver Form Used
 
 For each scalar row, solve iteratively:
 
 $$
-Jv + \mathrm{bias} + \alpha \lambda = 0
+Jv_A - Jv_B + \mathrm{bias} + \alpha \lambda = 0
 $$
 
 with update:
 
 $$
-\Delta \lambda = -\frac{Jv + \mathrm{bias} + \alpha \lambda}{k}
+\Delta \lambda = -\frac{Jv_A - Jv_B + \mathrm{bias} + \alpha \lambda}{k}
 $$
 
 where:
@@ -202,12 +199,12 @@ for iter in 0..solver_iters-1:
     global_sq = 0
 
     for each row:
-        residual = Jv(row) + bias(row) + alpha(row) * lambda(row)
+        residual = JvA(row) - JvB(row) + bias(row) + alpha(row) * lambda(row)
         delta = -residual / effective_mass(row)
         lambda(row) += delta
         apply_impulse_delta(row, delta)
 
-        post = Jv(row) + bias(row) + alpha(row) * lambda(row)
+        post = JvA(row) - JvB(row) + bias(row) + alpha(row) * lambda(row)
         global_sq += post * post
 
     residual_trace[iter] = sqrt(global_sq)
