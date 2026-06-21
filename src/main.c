@@ -12,10 +12,8 @@
 
 typedef struct {
 	ecs_entity_t body;
-	double anchor_x;
-	double anchor_y;
-	double jv_x;
-	double jv_y;
+	vec2 anchor;
+	vec2 jv;
 	double jw;
 	double inv_mass;
 	double inv_inertia;
@@ -62,8 +60,8 @@ static double find_cached_lambda(
 		if (cached->a.body != a->body || cached->b.body != b->body) {
 			continue;
 		}
-		if (cached->a.jv_x == a->jv_x && cached->a.jv_y == a->jv_y &&
-			cached->b.jv_x == b->jv_x && cached->b.jv_y == b->jv_y) {
+		if (cached->a.jv[0] == a->jv[0] && cached->a.jv[1] == a->jv[1] &&
+			cached->b.jv[0] == b->jv[0] && cached->b.jv[1] == b->jv[1]) {
 			return cached->solver.lambda;
 		}
 	}
@@ -183,30 +181,30 @@ static int append_revolute_pair_rows(
 	vec2 delta_anchor;
 	glm_vec2_sub(anchor_b, anchor_a, delta_anchor);
 
-	const double axes[2][2] = {
-		{1.0, 0.0},
-		{0.0, 1.0}
+	const vec2 axes[2] = {
+		{1.0f, 0.0f},
+		{0.0f, 1.0f}
 	};
 
 	for (int row_axis = 0; row_axis < 2; row_axis ++) {
 		ConstraintRow *row = &g_solver_cache.rows[g_solver_cache.row_count ++];
-		const double nx = axes[row_axis][0];
-		const double ny = axes[row_axis][1];
-		vec2 axis = {(float)nx, (float)ny};
+		vec2 axis;
+		glm_vec2_copy(axes[row_axis], axis);
 
 		row->a.body = body_a;
 		row->b.body = body_b;
-		row->a.anchor_x = (double)anchor_a[0];
-		row->a.anchor_y = (double)anchor_a[1];
-		row->b.anchor_x = (double)anchor_b[0];
-		row->b.anchor_y = (double)anchor_b[1];
+		glm_vec2_copy(anchor_a, row->a.anchor);
+		glm_vec2_copy(anchor_b, row->b.anchor);
 
-		row->a.jv_x = -nx;
-		row->a.jv_y = -ny;
-		row->a.jw = -((double)ra[0] * ny - (double)ra[1] * nx);
-		row->b.jv_x = nx;
-		row->b.jv_y = ny;
-		row->b.jw = (double)rb[0] * ny - (double)rb[1] * nx;
+		// Sequential Impulse row assembly: n is the row direction (constraint axis) in world space.
+		// A uses -n and B uses +n so the row enforces relative motion along n with equal-and-opposite impulses.
+		glm_vec2_negate_to(axis, row->a.jv);
+		glm_vec2_copy(axis, row->b.jv);
+		
+		// Sequential Impulse row assembly: angular Jacobian for body A (Jw = -(r x n)).
+		row->a.jw = -(double)glm_vec2_cross(ra, axis);
+		// Sequential Impulse row assembly: angular Jacobian for body B (Jw = r x n).
+		row->b.jw = (double)glm_vec2_cross(rb, axis);
 
 		row->a.inv_mass = inv_if_nonzero(mass_a->value);
 		row->b.inv_mass = inv_if_nonzero(mass_b->value);
@@ -217,6 +215,7 @@ static int append_revolute_pair_rows(
 		row->solver.lambda = find_cached_lambda(&row->a, &row->b);
 		row->solver.solver_iters = row_solver_iters;
 
+		// Per-row denominator: k = J M^-1 J^T + alpha (compliance regularization).
 		const double k =
 			row->a.inv_mass + row->b.inv_mass +
 			(row->a.jw * row->a.jw) * row->a.inv_inertia +
@@ -243,8 +242,8 @@ static void apply_impulse_delta(ecs_world_t *ecs, const ConstraintRow *row, doub
 	Velocity *vel_a = ecs_get_mut(ecs, row->a.body, Velocity);
 	if (vel_a != NULL) {
 		vec2 delta_va = {
-			(float)(row->a.inv_mass * row->a.jv_x * delta_lambda),
-			(float)(row->a.inv_mass * row->a.jv_y * delta_lambda)
+			(float)(row->a.inv_mass * row->a.jv[0] * delta_lambda),
+			(float)(row->a.inv_mass * row->a.jv[1] * delta_lambda)
 		};
 		vel_a->x += (double)delta_va[0];
 		vel_a->y += (double)delta_va[1];
@@ -255,8 +254,8 @@ static void apply_impulse_delta(ecs_world_t *ecs, const ConstraintRow *row, doub
 	Velocity *vel_b = ecs_get_mut(ecs, row->b.body, Velocity);
 	if (vel_b != NULL) {
 		vec2 delta_vb = {
-			(float)(row->b.inv_mass * row->b.jv_x * delta_lambda),
-			(float)(row->b.inv_mass * row->b.jv_y * delta_lambda)
+			(float)(row->b.inv_mass * row->b.jv[0] * delta_lambda),
+			(float)(row->b.inv_mass * row->b.jv[1] * delta_lambda)
 		};
 		vel_b->x += (double)delta_vb[0];
 		vel_b->y += (double)delta_vb[1];
@@ -272,12 +271,12 @@ static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *
 
 	double jv = 0.0;
 	if (vel_a != NULL) {
-		vec2 jva = {(float)row->a.jv_x, (float)row->a.jv_y};
+		vec2 jva = {row->a.jv[0], row->a.jv[1]};
 		vec2 va = {(float)vel_a->x, (float)vel_a->y};
 		jv += (double)glm_vec2_dot(jva, va) + row->a.jw * vel_a->angular;
 	}
 	if (vel_b != NULL) {
-		vec2 jvb = {(float)row->b.jv_x, (float)row->b.jv_y};
+		vec2 jvb = {row->b.jv[0], row->b.jv[1]};
 		vec2 vb = {(float)vel_b->x, (float)vel_b->y};
 		jv += (double)glm_vec2_dot(jvb, vb) + row->b.jw * vel_b->angular;
 	}
@@ -393,6 +392,7 @@ void SolveConstraintRows(ecs_iter_t *it)
 					continue;
 				}
 				const double residual = compute_row_residual(it->world, row);
+				// Gauss-Seidel row update: delta_lambda = -(Jv + bias + alpha * lambda) / k.
 				const double delta_lambda = -residual / row->solver.effective_mass;
 				row->solver.lambda += delta_lambda;
 			apply_impulse_delta(it->world, row, delta_lambda);
