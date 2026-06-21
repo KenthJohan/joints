@@ -21,13 +21,17 @@ typedef struct {
 } BodyConstraintTerm;
 
 typedef struct {
-	BodyConstraintTerm a;
-	BodyConstraintTerm b;
 	double bias;
 	double alpha;
 	double effective_mass;
 	double lambda;
 	int solver_iters;
+} SolverData;
+
+typedef struct {
+	BodyConstraintTerm a;
+	BodyConstraintTerm b;
+	SolverData solver;
 } ConstraintRow;
 
 typedef struct {
@@ -59,7 +63,7 @@ static double find_cached_lambda(
 		}
 		if (cached->a.jv_x == a->jv_x && cached->a.jv_y == a->jv_y &&
 			cached->b.jv_x == b->jv_x && cached->b.jv_y == b->jv_y) {
-			return cached->lambda;
+			return cached->solver.lambda;
 		}
 	}
 
@@ -202,23 +206,23 @@ static int append_revolute_pair_rows(
 		row->b.inv_mass = inv_if_nonzero(mass_b->value);
 		row->a.inv_inertia = inv_if_nonzero(inertia_a->value);
 		row->b.inv_inertia = inv_if_nonzero(inertia_b->value);
-		row->bias = (beta / dt) * (dx * nx + dy * ny);
-		row->alpha = alpha;
-		row->lambda = find_cached_lambda(&row->a, &row->b);
-		row->solver_iters = row_solver_iters;
+		row->solver.bias = (beta / dt) * (dx * nx + dy * ny);
+		row->solver.alpha = alpha;
+		row->solver.lambda = find_cached_lambda(&row->a, &row->b);
+		row->solver.solver_iters = row_solver_iters;
 
 		const double k =
 			row->a.inv_mass + row->b.inv_mass +
 			(row->a.jw * row->a.jw) * row->a.inv_inertia +
 			(row->b.jw * row->b.jw) * row->b.inv_inertia +
-			row->alpha;
+			row->solver.alpha;
 
 		if (k <= 1e-9) {
 			g_solver_cache.row_count --;
 			continue;
 		}
 
-		row->effective_mass = k;
+		row->solver.effective_mass = k;
 	}
 
 	return 1;
@@ -260,7 +264,7 @@ static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *
 		jv += row->b.jv_x * vel_b->x + row->b.jv_y * vel_b->y + row->b.jw * vel_b->angular;
 	}
 
-	return jv + row->bias + row->alpha * row->lambda;
+	return jv + row->solver.bias + row->solver.alpha * row->solver.lambda;
 }
 
 void AssembleRevoluteRows(ecs_iter_t *it)
@@ -350,8 +354,8 @@ void SolveConstraintRows(ecs_iter_t *it)
 
 	int solver_iters = 0;
 	for (int row_index = 0; row_index < g_solver_cache.row_count; row_index ++) {
-		if (g_solver_cache.rows[row_index].solver_iters > solver_iters) {
-			solver_iters = g_solver_cache.rows[row_index].solver_iters;
+		if (g_solver_cache.rows[row_index].solver.solver_iters > solver_iters) {
+			solver_iters = g_solver_cache.rows[row_index].solver.solver_iters;
 		}
 	}
 	if (solver_iters <= 0) {
@@ -359,7 +363,7 @@ void SolveConstraintRows(ecs_iter_t *it)
 	}
 
 	for (int row_index = 0; row_index < g_solver_cache.row_count; row_index ++) {
-		apply_impulse_delta(it->world, &g_solver_cache.rows[row_index], g_solver_cache.rows[row_index].lambda);
+		apply_impulse_delta(it->world, &g_solver_cache.rows[row_index], g_solver_cache.rows[row_index].solver.lambda);
 	}
 
 	for (int iter = 0; iter < solver_iters; iter ++) {
@@ -367,12 +371,12 @@ void SolveConstraintRows(ecs_iter_t *it)
 
 		for (int row_index = 0; row_index < g_solver_cache.row_count; row_index ++) {
 			ConstraintRow *row = &g_solver_cache.rows[row_index];
-			if (iter >= row->solver_iters) {
-				continue;
-			}
-			const double residual = compute_row_residual(it->world, row);
-			const double delta_lambda = -residual / row->effective_mass;
-			row->lambda += delta_lambda;
+				if (iter >= row->solver.solver_iters) {
+					continue;
+				}
+				const double residual = compute_row_residual(it->world, row);
+				const double delta_lambda = -residual / row->solver.effective_mass;
+				row->solver.lambda += delta_lambda;
 			apply_impulse_delta(it->world, row, delta_lambda);
 
 			const double post_residual = compute_row_residual(it->world, row);
