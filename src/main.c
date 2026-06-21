@@ -77,14 +77,6 @@ static double inv_if_nonzero(double value)
 	return 1.0 / value;
 }
 
-static void rotate_local_vec2(const vec2 local, double angle, vec2 out)
-{
-	const float c = cosf((float)angle);
-	const float s = sinf((float)angle);
-	out[0] = c * local[0] - s * local[1];
-	out[1] = s * local[0] + c * local[1];
-}
-
 static ecs_entity_t resolve_instance_pivot(
 	const ecs_world_t *ecs,
 	ecs_entity_t source_pivot,
@@ -168,8 +160,8 @@ static int append_revolute_pair_rows(
 	vec2 local_bv = {(float)local_b->x, (float)local_b->y};
 	vec2 ra;
 	vec2 rb;
-	rotate_local_vec2(local_av, pose_a->angle, ra);
-	rotate_local_vec2(local_bv, pose_b->angle, rb);
+	glm_vec2_rotate(local_av, (float)pose_a->angle, ra);
+	glm_vec2_rotate(local_bv, (float)pose_b->angle, rb);
 
 	vec2 pa = {(float)pose_a->x, (float)pose_a->y};
 	vec2 pb = {(float)pose_b->x, (float)pose_b->y};
@@ -181,7 +173,7 @@ static int append_revolute_pair_rows(
 	vec2 delta_anchor;
 	glm_vec2_sub(anchor_b, anchor_a, delta_anchor);
 
-	const vec2 axes[2] = {
+	vec2 axes[2] = {
 		{1.0f, 0.0f},
 		{0.0f, 1.0f}
 	};
