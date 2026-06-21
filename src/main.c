@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdint.h>
 #include <assert.h>
+#include <cglm/cglm.h>
 #include <flecs.h>
 #include "sim_types.h"
 
@@ -78,12 +79,12 @@ static double inv_if_nonzero(double value)
 	return 1.0 / value;
 }
 
-static void rotate_local(double x, double y, double angle, double *out_x, double *out_y)
+static void rotate_local_vec2(const vec2 local, double angle, vec2 out)
 {
-	const double c = cos(angle);
-	const double s = sin(angle);
-	*out_x = c * x - s * y;
-	*out_y = s * x + c * y;
+	const float c = cosf((float)angle);
+	const float s = sinf((float)angle);
+	out[0] = c * local[0] - s * local[1];
+	out[1] = s * local[0] + c * local[1];
 }
 
 static ecs_entity_t resolve_instance_pivot(
@@ -165,18 +166,22 @@ static int append_revolute_pair_rows(
 		return 0;
 	}
 
-	double ra_x, ra_y;
-	double rb_x, rb_y;
-	rotate_local(local_a->x, local_a->y, pose_a->angle, &ra_x, &ra_y);
-	rotate_local(local_b->x, local_b->y, pose_b->angle, &rb_x, &rb_y);
+	vec2 local_av = {(float)local_a->x, (float)local_a->y};
+	vec2 local_bv = {(float)local_b->x, (float)local_b->y};
+	vec2 ra;
+	vec2 rb;
+	rotate_local_vec2(local_av, pose_a->angle, ra);
+	rotate_local_vec2(local_bv, pose_b->angle, rb);
 
-	const double anchor_ax = pose_a->x + ra_x;
-	const double anchor_ay = pose_a->y + ra_y;
-	const double anchor_bx = pose_b->x + rb_x;
-	const double anchor_by = pose_b->y + rb_y;
+	vec2 pa = {(float)pose_a->x, (float)pose_a->y};
+	vec2 pb = {(float)pose_b->x, (float)pose_b->y};
+	vec2 anchor_a;
+	vec2 anchor_b;
+	glm_vec2_add(pa, ra, anchor_a);
+	glm_vec2_add(pb, rb, anchor_b);
 
-	const double dx = anchor_bx - anchor_ax;
-	const double dy = anchor_by - anchor_ay;
+	vec2 delta_anchor;
+	glm_vec2_sub(anchor_b, anchor_a, delta_anchor);
 
 	const double axes[2][2] = {
 		{1.0, 0.0},
@@ -187,26 +192,27 @@ static int append_revolute_pair_rows(
 		ConstraintRow *row = &g_solver_cache.rows[g_solver_cache.row_count ++];
 		const double nx = axes[row_axis][0];
 		const double ny = axes[row_axis][1];
+		vec2 axis = {(float)nx, (float)ny};
 
 		row->a.body = body_a;
 		row->b.body = body_b;
-		row->a.anchor_x = anchor_ax;
-		row->a.anchor_y = anchor_ay;
-		row->b.anchor_x = anchor_bx;
-		row->b.anchor_y = anchor_by;
+		row->a.anchor_x = (double)anchor_a[0];
+		row->a.anchor_y = (double)anchor_a[1];
+		row->b.anchor_x = (double)anchor_b[0];
+		row->b.anchor_y = (double)anchor_b[1];
 
 		row->a.jv_x = -nx;
 		row->a.jv_y = -ny;
-		row->a.jw = -(ra_x * ny - ra_y * nx);
+		row->a.jw = -((double)ra[0] * ny - (double)ra[1] * nx);
 		row->b.jv_x = nx;
 		row->b.jv_y = ny;
-		row->b.jw = rb_x * ny - rb_y * nx;
+		row->b.jw = (double)rb[0] * ny - (double)rb[1] * nx;
 
 		row->a.inv_mass = inv_if_nonzero(mass_a->value);
 		row->b.inv_mass = inv_if_nonzero(mass_b->value);
 		row->a.inv_inertia = inv_if_nonzero(inertia_a->value);
 		row->b.inv_inertia = inv_if_nonzero(inertia_b->value);
-		row->solver.bias = (beta / dt) * (dx * nx + dy * ny);
+		row->solver.bias = (beta / dt) * (double)glm_vec2_dot(delta_anchor, axis);
 		row->solver.alpha = alpha;
 		row->solver.lambda = find_cached_lambda(&row->a, &row->b);
 		row->solver.solver_iters = row_solver_iters;
@@ -236,16 +242,24 @@ static void apply_impulse_delta(ecs_world_t *ecs, const ConstraintRow *row, doub
 
 	Velocity *vel_a = ecs_get_mut(ecs, row->a.body, Velocity);
 	if (vel_a != NULL) {
-		vel_a->x += row->a.inv_mass * row->a.jv_x * delta_lambda;
-		vel_a->y += row->a.inv_mass * row->a.jv_y * delta_lambda;
+		vec2 delta_va = {
+			(float)(row->a.inv_mass * row->a.jv_x * delta_lambda),
+			(float)(row->a.inv_mass * row->a.jv_y * delta_lambda)
+		};
+		vel_a->x += (double)delta_va[0];
+		vel_a->y += (double)delta_va[1];
 		vel_a->angular += row->a.inv_inertia * row->a.jw * delta_lambda;
 		ecs_modified(ecs, row->a.body, Velocity);
 	}
 
 	Velocity *vel_b = ecs_get_mut(ecs, row->b.body, Velocity);
 	if (vel_b != NULL) {
-		vel_b->x += row->b.inv_mass * row->b.jv_x * delta_lambda;
-		vel_b->y += row->b.inv_mass * row->b.jv_y * delta_lambda;
+		vec2 delta_vb = {
+			(float)(row->b.inv_mass * row->b.jv_x * delta_lambda),
+			(float)(row->b.inv_mass * row->b.jv_y * delta_lambda)
+		};
+		vel_b->x += (double)delta_vb[0];
+		vel_b->y += (double)delta_vb[1];
 		vel_b->angular += row->b.inv_inertia * row->b.jw * delta_lambda;
 		ecs_modified(ecs, row->b.body, Velocity);
 	}
@@ -258,10 +272,14 @@ static double compute_row_residual(const ecs_world_t *ecs, const ConstraintRow *
 
 	double jv = 0.0;
 	if (vel_a != NULL) {
-		jv += row->a.jv_x * vel_a->x + row->a.jv_y * vel_a->y + row->a.jw * vel_a->angular;
+		vec2 jva = {(float)row->a.jv_x, (float)row->a.jv_y};
+		vec2 va = {(float)vel_a->x, (float)vel_a->y};
+		jv += (double)glm_vec2_dot(jva, va) + row->a.jw * vel_a->angular;
 	}
 	if (vel_b != NULL) {
-		jv += row->b.jv_x * vel_b->x + row->b.jv_y * vel_b->y + row->b.jw * vel_b->angular;
+		vec2 jvb = {(float)row->b.jv_x, (float)row->b.jv_y};
+		vec2 vb = {(float)vel_b->x, (float)vel_b->y};
+		jv += (double)glm_vec2_dot(jvb, vb) + row->b.jw * vel_b->angular;
 	}
 
 	return jv + row->solver.bias + row->solver.alpha * row->solver.lambda;
@@ -411,9 +429,15 @@ void IntegrateBodies(ecs_iter_t *it)
 
 	for (int i = 0; i < it->count; i ++) {
 		const double dt = (solver_cfg->dt > 0.0) ? solver_cfg->dt : ((it->delta_time > 0.0) ? (double)it->delta_time : (1.0 / 60.0));
+		vec2 position = {(float)pose[i].x, (float)pose[i].y};
+		vec2 linear_velocity = {(float)velocity[i].x, (float)velocity[i].y};
+		vec2 delta_position;
 
-		pose[i].x += velocity[i].x * dt;
-		pose[i].y += velocity[i].y * dt;
+		glm_vec2_scale(linear_velocity, (float)dt, delta_position);
+		glm_vec2_add(position, delta_position, position);
+
+		pose[i].x = (double)position[0];
+		pose[i].y = (double)position[1];
 		pose[i].angle += velocity[i].angular * dt;
 		ecs_modified(it->world, it->entities[i], Pose);
 	}
