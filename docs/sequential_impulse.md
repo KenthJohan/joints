@@ -91,6 +91,48 @@ $$
 
 These are the angular terms that appear in both $Jv$ and the denominator contribution $J M^{-1} J^T$.
 
+### What Components $J$ Consists Of
+
+For one scalar row in a 2D two-body constraint, use generalized velocity ordering:
+
+$$
+qdot = [v_{Ax},\ v_{Ay},\ \omega_A,\ v_{Bx},\ v_{By},\ \omega_B]^T
+$$
+
+Then the Jacobian row is:
+
+$$
+J = [J_{vAx},\ J_{vAy},\ J_{\omega A},\ J_{vBx},\ J_{vBy},\ J_{\omega B}]
+$$
+
+with linear components:
+
+$$
+J_{vA} = n, \qquad J_{vB} = -n
+$$
+
+and angular components:
+
+$$
+J_{\omega A} = r_A \times n, \qquad J_{\omega B} = -(r_B \times n)
+$$
+
+So an explicit row form is:
+
+$$
+J = [n_x,\ n_y,\ r_A \times n,\ -n_x,\ -n_y,\ -(r_B \times n)]
+$$
+
+Axis-row examples used here:
+
+$$
+n=(1,0) \Rightarrow J=[1,0,-r_{Ay},-1,0,r_{By}]
+$$
+
+$$
+n=(0,1) \Rightarrow J=[0,1,r_{Ax},0,-1,-r_{Bx}]
+$$
+
 ### Variables Used In This Section
 
 | Symbol | Type | Meaning |
@@ -108,6 +150,10 @@ These are the angular terms that appear in both $Jv$ and the denominator contrib
 | $v_A,\ v_B$ | 2D vectors | Linear velocities of body A and body B, respectively. |
 | $\omega_A,\ \omega_B$ | scalars | Angular velocities of body A and body B, respectively. |
 | $r \times n$ | scalar | 2D scalar cross product, $r_x n_y - r_y n_x$, equal to $n \cdot r^\perp$. |
+| $J$ | row matrix (Jacobian) | Constraint Jacobian row that maps generalized velocities to scalar constraint velocity, used in $Jv$ and $J M^{-1} J^T$. |
+| $M$ | matrix | Generalized mass matrix for the bodies in a constraint row; $M^{-1}$ is the generalized inverse mass matrix used in $J M^{-1} J^T$. |
+| $\alpha$ | scalar | Compliance regularization (CFM-like softening) term added to the row equation and denominator. |
+| $k$ | scalar | Effective row denominator, $k = J M^{-1} J^T + \alpha$, used to scale impulse updates. |
 
 Type notes:
 
@@ -131,7 +177,7 @@ $$
 where:
 
 - $k = J M^{-1} J^T + \alpha$
-- $\alpha$ is compliance-derived softening
+- $\alpha$ is the compliance regularization (CFM-like softening) term
 - $\lambda$ is warm-started and iteratively refined
 
 Interpretation:
