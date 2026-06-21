@@ -213,33 +213,35 @@ Optional motor/limit behavior along axis $t$ is usually implemented as additiona
 
 #### Description Table
 
-| Joint type                          | Representative row      | What is constrained                                                       | How a constraint row is added                                                                                                                                | Rows needed in 2D           |
-| ----------------------------------- | ----------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- |
-| Revolute                            | Anchor x/y row          | Coincidence of the two anchor points                                      | Add one scalar row per world axis. In this formulation that means one row for $n=(1,0)$ and one row for $n=(0,1)$ so each row constrains one component of anchor-point separation. | 2 equality rows             |
-| Prismatic                           | Lateral translation row | Relative translation perpendicular to the slide axis, plus relative angle | Add one lateral row along $n=t^\perp$ to remove relative motion perpendicular to axis $t$, then add one angular alignment row.                               | 2 equality rows             |
-| Prismatic                           | Angular alignment row   | Relative translation perpendicular to the slide axis, plus relative angle | Add one pure angular row to keep the two body frames aligned while allowing sliding along $t$.                                                               | 2 equality rows             |
-| Distance                            | Separation row          | Separation along the line between two anchor points                       | Add one scalar row along the normalized anchor separation direction so the row constrains only distance along that line.                                     | 1 equality row              |
-| Weld                                | Translational row       | Relative translation and relative angle                                   | Add the same translational row construction as a revolute joint, usually once for x and once for y.                                                         | 3 equality rows             |
-| Weld                                | Angular row             | Relative translation and relative angle                                   | Add one pure angular row to lock relative orientation after the translational rows.                                                                           | 3 equality rows             |
-| Fixed rotation                      | Angular row             | Relative angle only                                                       | Add one pure angular row; no translational row is added.                                                                                                      | 1 equality row              |
-| Motor on revolute axis              | Drive row               | Target relative angular speed                                             | Add a pure angular drive row that pushes relative angular speed toward the motor target.                                                                      | Usually +1 row              |
-| Motor on prismatic axis             | Drive row               | Target relative slide speed                                               | Add a row along the slide axis $t$ to drive relative speed along the allowed translation direction.                                                          | Usually +1 row              |
-| Limit on revolute or prismatic axis | Active limit row        | Relative angle or slide position bound                                    | Add a row only when the limit is violated or active; this row is typically unilateral and clamped.                                                           | 0 or 1 active row per limit |
+| Joint type                          | What is constrained                                                       | Rows needed in 2D           |
+| ----------------------------------- | ------------------------------------------------------------------------- | --------------------------- |
+| Revolute                            | Coincidence of the two anchor points                                      | 2 equality rows             |
+| Prismatic                           | Relative translation perpendicular to the slide axis, plus relative angle | 2 equality rows             |
+| Prismatic                           | Relative translation perpendicular to the slide axis, plus relative angle | 2 equality rows             |
+| Distance                            | Separation along the line between two anchor points                       | 1 equality row              |
+| Weld                                | Relative translation and relative angle                                   | 3 equality rows             |
+| Weld                                | Relative translation and relative angle                                   | 3 equality rows             |
+| Fixed rotation                      | Relative angle only                                                       | 1 equality row              |
+| Motor on revolute axis              | Target relative angular speed                                             | Usually +1 row              |
+| Motor on prismatic axis             | Target relative slide speed                                               | Usually +1 row              |
+| Limit on revolute or prismatic axis | Relative angle or slide position bound                                    | 0 or 1 active row per limit |
 
 #### Math Table
 
-| Joint type                          | $J_{vA}$                      | $J_{vB}$                      | $J_{\omega A}$                | $J_{\omega B}$                |
-| ----------------------------------- | ----------------------------- | ----------------------------- | ----------------------------- | ----------------------------- |
-| Revolute                            | $-n$                          | $n$                           | $-(r_A \times n)$             | $r_B \times n$                |
-| Prismatic                           | $-n$ with $n=t^\perp$         | $n$ with $n=t^\perp$          | $-(r_A \times n)$             | $r_B \times n$                |
-| Prismatic                           | $0$                           | $0$                           | $-1$                          | $1$                           |
-| Distance                            | $-n$                          | $n$                           | $-(r_A \times n)$             | $r_B \times n$                |
-| Weld                                | $-n$                          | $n$                           | $-(r_A \times n)$             | $r_B \times n$                |
-| Weld                                | $0$                           | $0$                           | $-1$                          | $1$                           |
-| Fixed rotation                      | $0$                           | $0$                           | $-1$                          | $1$                           |
-| Motor on revolute axis              | $0$                           | $0$                           | $-1$                          | $1$                           |
-| Motor on prismatic axis             | $-t$                          | $t$                           | $-(r_A \times t)$             | $r_B \times t$                |
-| Limit on revolute or prismatic axis | Same as the DOF being limited | Same as the DOF being limited | Same as the DOF being limited | Same as the DOF being limited |
+| Joint type                            | $n$                                                     | $J_{vA}$              | $J_{vB}$              | $J_{\omega A}$        | $J_{\omega B}$        |
+| ------------------------------------- | ------------------------------------------------------- | --------------------- | --------------------- | --------------------- | --------------------- |
+| Revolute 0                            | $(1,0)$                                                 | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
+| Revolute 1                            | $(0,1)$                                                 | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
+| Prismatic 0                           | $t^\perp$                                              | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
+| Prismatic 1                           | $-$                                                     | $0$                   | $0$                   | $-1$                  | $1$                   |
+| Distance 0                            | $n$                                                     | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
+| Weld 0                                | $(1,0)$                                                 | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
+| Weld 1                                | $(0,1)$                                                 | $-n$                  | $n$                   | $-(r_A \times n)$     | $r_B \times n$        |
+| Weld 2                                | $-$                                                     | $0$                   | $0$                   | $-1$                  | $1$                   |
+| Fixed rotation 0                      | $-$                                                     | $0$                   | $0$                   | $-1$                  | $1$                   |
+| Motor on revolute axis 0              | $-$                                                     | $0$                   | $0$                   | $-1$                  | $1$                   |
+| Motor on prismatic axis 0             | $t$                                                     | $-t$                  | $t$                   | $-(r_A \times t)$     | $r_B \times t$        |
+| Limit on revolute or prismatic axis 0 | $n_{\mathrm{limit}}$                                   | Same as limited DOF   | Same as limited DOF   | Same as limited DOF   | Same as limited DOF   |
 
 ### Variables Used In This Section
 
