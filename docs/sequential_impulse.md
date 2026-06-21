@@ -135,25 +135,29 @@ $$
 
 ### Variables Used In This Section
 
-| Symbol | Type | Meaning |
-|---|---|---|
-| $v_p$ | 2D vector | Velocity of a constraint point on a body in world space. |
-| $v$ | 2D vector | Linear velocity of the body center of mass in world space. |
-| $\omega$ | scalar | Angular velocity in 2D (about out-of-plane z-axis). |
-| $r$ | 2D vector | Offset from body center of mass to the constraint point in world space. |
-| $r^\perp$ | 2D vector | Perpendicular vector to $r$, defined as $(-r_y,\ r_x)$. |
-| $n$ | 2D unit vector | Constraint row direction in world space (for example x-axis or y-axis). |
-| $Jv$ | scalar | Relative velocity along the row direction after applying the Jacobian to current velocities. |
-| $J_{\omega A}$ | scalar | Angular Jacobian coefficient multiplying body A angular velocity $\omega_A$. |
-| $J_{\omega B}$ | scalar | Angular Jacobian coefficient multiplying body B angular velocity $\omega_B$. |
-| $r_A,\ r_B$ | 2D vectors | Point offsets for body A and body B, respectively. |
-| $v_A,\ v_B$ | 2D vectors | Linear velocities of body A and body B, respectively. |
-| $\omega_A,\ \omega_B$ | scalars | Angular velocities of body A and body B, respectively. |
-| $r \times n$ | scalar | 2D scalar cross product, $r_x n_y - r_y n_x$, equal to $n \cdot r^\perp$. |
-| $J$ | row matrix (Jacobian) | Constraint Jacobian row that maps generalized velocities to scalar constraint velocity, used in $Jv$ and $J M^{-1} J^T$. |
-| $M$ | matrix | Generalized mass matrix for the bodies in a constraint row; $M^{-1}$ is the generalized inverse mass matrix used in $J M^{-1} J^T$. |
-| $\alpha$ | scalar | Compliance regularization (CFM-like softening) term added to the row equation and denominator. |
-| $k$ | scalar | Effective row denominator, $k = J M^{-1} J^T + \alpha$, used to scale impulse updates. |
+| Base Symbol | Full Symbol Form | Type | Meaning |
+|---|---|---|---|
+| $\alpha$ | $\alpha$ | scalar | Compliance regularization (CFM-like softening) term added to the row equation and denominator. |
+| $J$ | $J$ | row matrix (Jacobian) | Full constraint Jacobian row: $[J_{vAx},\ J_{vAy},\ J_{\omega A},\ J_{vBx},\ J_{vBy},\ J_{\omega B}]$. |
+| $J$ | $J_{vAx}$ | scalar | Body A linear Jacobian x component, $J_{vAx}=n_x$. |
+| $J$ | $J_{vAy}$ | scalar | Body A linear Jacobian y component, $J_{vAy}=n_y$. |
+| $J$ | $J_{vBx}$ | scalar | Body B linear Jacobian x component, $J_{vBx}=-n_x$. |
+| $J$ | $J_{vBy}$ | scalar | Body B linear Jacobian y component, $J_{vBy}=-n_y$. |
+| $J$ | $J_{\omega A}$ | scalar | Body A angular Jacobian component, $J_{\omega A}=r_A \times n$. |
+| $J$ | $J_{\omega B}$ | scalar | Body B angular Jacobian component, $J_{\omega B}=-(r_B \times n)$. |
+| $v$ | $Jv$ | scalar | Relative row velocity $Jv$ after applying the Jacobian to generalized velocities. |
+| $k$ | $k$ | scalar | Effective row denominator, $k = J M^{-1} J^T + \alpha$, used to scale impulse updates. |
+| $M$ | $M$ | matrix | Generalized mass matrix for the bodies in a constraint row; $M^{-1}$ is the generalized inverse mass matrix used in $J M^{-1} J^T$. |
+| $n$ | $n$ | 2D unit vector | Constraint row direction in world space (for example x-axis or y-axis). |
+| $r$ | $r$ | 2D vector | Offset from body center of mass to the constraint point in world space. |
+| $r$ | $r^\perp$ | 2D vector | Perpendicular vector to $r$, defined as $r^\perp = (-r_y,\ r_x)$. |
+| $r$ | $r_A,\ r_B$ | 2D vectors | Point offsets for body A and body B, respectively ($r_A, r_B$). |
+| $r$ | $r \times n$ | scalar | 2D scalar cross product $r \times n = r_x n_y - r_y n_x = n \cdot r^\perp$. |
+| $v$ | $v_A,\ v_B$ | 2D vectors | Linear velocities of body A and body B, respectively ($v_A, v_B$). |
+| $v$ | $v_{\mathrm{com}}$ | 2D vector | Linear velocity of the body center of mass in world space. |
+| $v$ | $v_p$ | 2D vector | Velocity of a constraint point on a body in world space ($v_p$). |
+| $\omega$ | $\omega$ | scalar | Angular velocity in 2D (about out-of-plane z-axis). |
+| $\omega$ | $\omega_A,\ \omega_B$ | scalars | Angular velocities of body A and body B, respectively ($\omega_A, \omega_B$). |
 
 Type notes:
 
