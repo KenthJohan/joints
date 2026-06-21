@@ -137,16 +137,120 @@ $$
 n=(0,1) \Rightarrow J=[0,1,r_{Ax},0,-1,-r_{Bx}]
 $$
 
+### How Rows Are Created From Revolute And Prismatic Constraints
+
+The solver operates on scalar rows. A joint contributes one or more rows depending on which DOFs are constrained.
+
+For each row, assembly follows the same pattern:
+
+- choose a row direction (or angular mode)
+- compute Jacobian terms for body A and body B
+- compute $Jv_A$ and $Jv_B$
+- compute positional/angular error for Baumgarte bias
+- compute denominator $k = J M^{-1} J^T + \alpha$
+
+#### Revolute Joint (2D)
+
+A revolute joint enforces coincidence of two world-space anchor points:
+
+$$
+C = (x_A + r_A) - (x_B + r_B) = 0
+$$
+
+In 2D, this gives 2 scalar translational rows (x and y axes):
+
+- Row 1: $n=(1,0)$
+- Row 2: $n=(0,1)$
+
+Each row uses:
+
+$$
+Jv_A = n \cdot (v_A + \omega_A r_A^\perp),
+\qquad
+Jv_B = n \cdot (v_B + \omega_B r_B^\perp)
+$$
+
+with residual form:
+
+$$
+r = Jv_A - Jv_B + \mathrm{bias} + \alpha\lambda
+$$
+
+So a revolute joint contributes exactly 2 equality rows in this 2D formulation.
+
+#### Prismatic Joint (2D)
+
+A prismatic joint allows relative translation along a chosen axis $t$ and constrains motion in the perpendicular direction $n=t^\perp$.
+
+Typical equality rows are:
+
+1. Lateral translation row (remove sideways drift):
+
+$$
+Jv_A^{\perp} = n \cdot (v_A + \omega_A r_A^\perp),
+\qquad
+Jv_B^{\perp} = n \cdot (v_B + \omega_B r_B^\perp)
+$$
+
+$$
+r_{\perp} = Jv_A^{\perp} - Jv_B^{\perp} + \mathrm{bias}_{\perp} + \alpha_{\perp}\lambda_{\perp}
+$$
+
+2. Relative angle row (keep bodies aligned to the slide axis frame):
+
+$$
+r_{\theta} = (\omega_A - \omega_B) + \mathrm{bias}_{\theta} + \alpha_{\theta}\lambda_{\theta}
+$$
+
+So, for equality-only behavior, a prismatic joint usually contributes 2 rows in 2D:
+
+- one linear row along $n$
+- one angular row
+
+Optional motor/limit behavior along axis $t$ is usually implemented as additional rows (or inequality rows) on top of these base rows.
+
+### Joint Type Summary
+
+#### Description Table
+
+| Joint type                          | Representative row      | What is constrained                                                       | How a constraint row is added                                                                                                                                | Rows needed in 2D           |
+| ----------------------------------- | ----------------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------- |
+| Revolute                            | Anchor x/y row          | Coincidence of the two anchor points                                      | Add one scalar row per world axis. In this formulation that means one row for $n=(1,0)$ and one row for $n=(0,1)$ so each row constrains one component of anchor-point separation. | 2 equality rows             |
+| Prismatic                           | Lateral translation row | Relative translation perpendicular to the slide axis, plus relative angle | Add one lateral row along $n=t^\perp$ to remove relative motion perpendicular to axis $t$, then add one angular alignment row.                               | 2 equality rows             |
+| Prismatic                           | Angular alignment row   | Relative translation perpendicular to the slide axis, plus relative angle | Add one pure angular row to keep the two body frames aligned while allowing sliding along $t$.                                                               | 2 equality rows             |
+| Distance                            | Separation row          | Separation along the line between two anchor points                       | Add one scalar row along the normalized anchor separation direction so the row constrains only distance along that line.                                     | 1 equality row              |
+| Weld                                | Translational row       | Relative translation and relative angle                                   | Add the same translational row construction as a revolute joint, usually once for x and once for y.                                                         | 3 equality rows             |
+| Weld                                | Angular row             | Relative translation and relative angle                                   | Add one pure angular row to lock relative orientation after the translational rows.                                                                           | 3 equality rows             |
+| Fixed rotation                      | Angular row             | Relative angle only                                                       | Add one pure angular row; no translational row is added.                                                                                                      | 1 equality row              |
+| Motor on revolute axis              | Drive row               | Target relative angular speed                                             | Add a pure angular drive row that pushes relative angular speed toward the motor target.                                                                      | Usually +1 row              |
+| Motor on prismatic axis             | Drive row               | Target relative slide speed                                               | Add a row along the slide axis $t$ to drive relative speed along the allowed translation direction.                                                          | Usually +1 row              |
+| Limit on revolute or prismatic axis | Active limit row        | Relative angle or slide position bound                                    | Add a row only when the limit is violated or active; this row is typically unilateral and clamped.                                                           | 0 or 1 active row per limit |
+
+#### Math Table
+
+| Joint type                          | $J_{vA}$                      | $J_{vB}$                      | $J_{\omega A}$                | $J_{\omega B}$                |
+| ----------------------------------- | ----------------------------- | ----------------------------- | ----------------------------- | ----------------------------- |
+| Revolute                            | $-n$                          | $n$                           | $-(r_A \times n)$             | $r_B \times n$                |
+| Prismatic                           | $-n$ with $n=t^\perp$         | $n$ with $n=t^\perp$          | $-(r_A \times n)$             | $r_B \times n$                |
+| Prismatic                           | $0$                           | $0$                           | $-1$                          | $1$                           |
+| Distance                            | $-n$                          | $n$                           | $-(r_A \times n)$             | $r_B \times n$                |
+| Weld                                | $-n$                          | $n$                           | $-(r_A \times n)$             | $r_B \times n$                |
+| Weld                                | $0$                           | $0$                           | $-1$                          | $1$                           |
+| Fixed rotation                      | $0$                           | $0$                           | $-1$                          | $1$                           |
+| Motor on revolute axis              | $0$                           | $0$                           | $-1$                          | $1$                           |
+| Motor on prismatic axis             | $-t$                          | $t$                           | $-(r_A \times t)$             | $r_B \times t$                |
+| Limit on revolute or prismatic axis | Same as the DOF being limited | Same as the DOF being limited | Same as the DOF being limited | Same as the DOF being limited |
+
 ### Variables Used In This Section
 
-| Symbol      | Type                  | Meaning                                                                                                                             |
+| Symbol                | Type                  | Meaning                                                                                                                             |
 | --------------------- | --------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | $\alpha$              | scalar                | Compliance regularization (CFM-like softening) term added to the row equation and denominator.                                      |
 | $J$                   | row matrix (Jacobian) | Full constraint Jacobian row: $[J_{vAx},\ J_{vAy},\ J_{\omega A},\ J_{vBx},\ J_{vBy},\ J_{\omega B}]$.                              |
 | $J_{\omega A}$        | scalar                | Body A angular Jacobian component, $J_{\omega A}=r_A \times n$.                                                                     |
 | $J_{\omega B}$        | scalar                | Body B angular Jacobian component, $J_{\omega B}=-(r_B \times n)$.                                                                  |
-| $Jv_A$                | scalar                | Body A contribution to row velocity, $Jv_A = n \cdot (v_A + \omega_A r_A^\perp)$.                                                |
-| $Jv_B$                | scalar                | Body B contribution to row velocity, $Jv_B = n \cdot (v_B + \omega_B r_B^\perp)$.                                                |
+| $Jv_A$                | scalar                | Body A contribution to row velocity, $Jv_A = n \cdot (v_A + \omega_A r_A^\perp)$.                                                   |
+| $Jv_B$                | scalar                | Body B contribution to row velocity, $Jv_B = n \cdot (v_B + \omega_B r_B^\perp)$.                                                   |
 | $k$                   | scalar                | Effective row denominator, $k = J M^{-1} J^T + \alpha$, used to scale impulse updates.                                              |
 | $M$                   | matrix                | Generalized mass matrix for the bodies in a constraint row; $M^{-1}$ is the generalized inverse mass matrix used in $J M^{-1} J^T$. |
 | $n$                   | 2D unit vector        | Constraint row direction in world space (for example x-axis or y-axis).                                                             |
